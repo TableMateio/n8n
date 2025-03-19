@@ -8,8 +8,8 @@
  *   node scripts/run.js prod             # Start in production mode
  *   node scripts/run.js test             # Start in test mode (safe for testing integrations)
  *   node scripts/run.js dev              # Start in development mode (hot reloading)
- *   node scripts/run.js https            # Start in HTTPS mode (secure)
- *   node scripts/run.js safari           # Alias for HTTPS mode (legacy)
+ *   node scripts/run.js dev-test         # Start in development mode with test data
+ *   node scripts/run.js --http           # Use HTTP instead of HTTPS (not recommended)
  */
 
 const { execSync, spawn } = require('child_process');
@@ -52,36 +52,13 @@ const projectRoot = path.resolve(__dirname, '..');
 const sslKey = path.join(projectRoot, 'localhost.key');
 const sslCert = path.join(projectRoot, 'localhost.crt');
 
-// Environment configurations
+// Check command line args for --http flag
+const useHttp = process.argv.includes('--http');
+
+// Environment configurations - all with HTTPS by default
 const environments = {
-  "https": {
-    name: 'HTTPS Mode',
-    description: 'Secure HTTPS with SSL certificates (recommended)',
-    env: {
-      NODE_ENV: 'development',
-      N8N_ENVIRONMENT: 'test',
-      N8N_PROTOCOL: 'https',
-      N8N_SECURE_COOKIE: 'true',
-      N8N_PORT: '5678',
-      N8N_HOST: 'localhost',
-      N8N_EDITOR_BASE_URL: 'https://localhost:5678/',
-      N8N_BROWSER_OPEN_URL: 'true',
-      N8N_SSL_KEY: sslKey,
-      N8N_SSL_CERT: sslCert,
-      N8N_RUNNERS_ENABLED: 'true'
-    },
-    command: 'pnpm dev',
-    port: 5678,
-    protocol: 'https'
-  },
-  // Keep safari as an alias for backwards compatibility
-  "safari": {
-    name: 'Safari HTTPS',
-    description: 'Alias for HTTPS mode (legacy)',
-    aliasFor: 'https'
-  },
   "dev-test": {
-    name: 'Dev + Test',
+    name: 'Development + Test',
     description: 'Hot reloading with test data',
     env: {
       NODE_ENV: 'development',
@@ -91,9 +68,9 @@ const environments = {
     },
     command: 'pnpm dev',
     port: 5678,
-    protocol: 'http'
+    protocol: useHttp ? 'http' : 'https'
   },
-  dev: {
+  "dev": {
     name: 'Development',
     description: 'Hot reloading with real data',
     env: {
@@ -103,9 +80,9 @@ const environments = {
     },
     command: 'pnpm dev',
     port: 5678,
-    protocol: 'http'
+    protocol: useHttp ? 'http' : 'https'
   },
-  test: {
+  "test": {
     name: 'Test',
     description: 'Stable server with test data',
     env: {
@@ -116,9 +93,9 @@ const environments = {
     },
     command: 'pnpm start',
     port: 5678,
-    protocol: 'http'
+    protocol: useHttp ? 'http' : 'https'
   },
-  prod: {
+  "prod": {
     name: 'Production',
     description: 'Stable server with real data',
     env: {
@@ -128,7 +105,19 @@ const environments = {
     },
     command: 'pnpm start',
     port: 5678,
-    protocol: 'http'
+    protocol: useHttp ? 'http' : 'https'
+  },
+  // Keep safari and https as aliases that users can still select
+  "https": {
+    name: 'HTTPS Only',
+    description: 'Same as Dev-Test but with HTTPS explicitly enabled',
+    aliasFor: 'dev-test',
+    forceHttps: true
+  },
+  "safari": {
+    name: 'Safari Compatible',
+    description: 'Legacy mode for Safari browser (same as HTTPS)',
+    aliasFor: 'https'
   }
 };
 
@@ -169,8 +158,8 @@ function showHeader() {
 // Ask the user which environment to use with arrow keys
 async function askEnvironment() {
   const choices = Object.entries(environments).map(([key, env]) => {
-    // Skip aliases from the primary list
-    if (env.aliasFor) return null;
+    // Skip immediate aliases from the primary list
+    if (env.aliasFor === 'https') return null;
 
     return {
       name: `${colors.green}${key}${colors.reset} - ${env.name} ${colors.gray}(${env.description})${colors.reset}`,
@@ -184,7 +173,7 @@ async function askEnvironment() {
       type: 'list',
       name: 'envChoice',
       message: 'Select environment:',
-      default: 'https', // Make HTTPS the default
+      default: 'dev-test', // Default to dev-test
       choices: choices,
       pageSize: 10
     }
@@ -280,6 +269,23 @@ async function openBrowser(environment) {
   return false;
 }
 
+// Apply HTTPS specific settings to an environment configuration
+function applyHttpsSettings(env) {
+  if (!useHttp && (env.protocol === 'https' || env.forceHttps)) {
+    env.env = {
+      ...env.env,
+      N8N_PROTOCOL: 'https',
+      N8N_SECURE_COOKIE: 'true',
+      N8N_PORT: '5678',
+      N8N_HOST: 'localhost',
+      N8N_EDITOR_BASE_URL: 'https://localhost:5678/',
+      N8N_SSL_KEY: sslKey,
+      N8N_SSL_CERT: sslCert
+    };
+  }
+  return env;
+}
+
 // Run n8n with the specified environment
 function runN8N(envKey) {
   let envConfig = environments[envKey];
@@ -294,9 +300,12 @@ function runN8N(envKey) {
   if (envConfig.aliasFor) {
     const originalKey = envKey;
     envKey = envConfig.aliasFor;
-    envConfig = environments[envKey];
+    envConfig = { ...environments[envKey], forceHttps: envConfig.forceHttps };
     console.log(`${colors.yellow}Note: '${originalKey}' is an alias for '${envKey}'${colors.reset}`);
   }
+
+  // Apply HTTPS settings to all environments if not using HTTP
+  envConfig = applyHttpsSettings(envConfig);
 
   console.log(`${colors.green}Starting n8n in ${colors.bright}${envConfig.name}${colors.reset}${colors.green} mode...${colors.reset}\n`);
 
@@ -310,7 +319,7 @@ function runN8N(envKey) {
   }
 
   // If we're using HTTPS, ensure certificates are available
-  if (envConfig.protocol === 'https') {
+  if (envConfig.protocol === 'https' || envConfig.forceHttps) {
     ensureCertificates();
   }
 
@@ -333,7 +342,7 @@ function runN8N(envKey) {
   // Based on environment, run either regular way or directly (HTTPS mode)
   let childProcess;
 
-  if (envKey === 'https' && fs.existsSync(path.join(projectRoot, 'packages/cli/bin/n8n'))) {
+  if ((envConfig.protocol === 'https' || envConfig.forceHttps) && fs.existsSync(path.join(projectRoot, 'packages/cli/bin/n8n'))) {
     console.log(`${colors.yellow}Using direct n8n executable for HTTPS mode${colors.reset}`);
     childProcess = spawn('./packages/cli/bin/n8n', ['start'], {
       env,
@@ -427,6 +436,11 @@ async function main() {
 
   // Check command line argument
   let envKey = process.argv[2];
+
+  // Skip --http flag for environment selection
+  if (envKey === '--http') {
+    envKey = undefined;
+  }
 
   // If no argument, ask the user
   if (!envKey) {
