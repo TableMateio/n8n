@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+	<head>
+		<title>N8N Certificate Help</title>
+		<style>
+			body {
+				font-family: Arial, sans-serif;
+				line-height: 1.6;
+				max-width: 800px;
+				margin: 0 auto;
+				padding: 20px;
+			}
+			h1 {
+				color: #333;
+			}
+			.step {
+				margin-bottom: 20px;
+				padding: 15px;
+				background-color: #f7f7f7;
+				border-left: 4px solid #0099ff;
+			}
+			.browser {
+				margin-top: 30px;
+				border-top: 1px solid #ddd;
+				padding-top: 20px;
+			}
+			img {
+				max-width: 100%;
+				border: 1px solid #ddd;
+				margin: 10px 0;
+			}
+			.button {
+				display: inline-block;
+				background-color: #0099ff;
+				color: white;
+				padding: 10px 20px;
+				text-decoration: none;
+				border-radius: 4px;
+				margin-top: 20px;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>N8N Certificate Help</h1>
+
+		<p>
+			You're seeing this page because your browser doesn't trust the self-signed certificate being
+			used by N8N.
+		</p>
+
+		<div class="step">
+			<h2>Option 1: Access N8N directly</h2>
+			<p>Click the button below to go to N8N. You will need to bypass the certificate warning.</p>
+			<a href="https://localhost:5678" class="button">Go to N8N</a>
+		</div>
+
+		<div class="browser">
+			<h2>How to bypass certificate warnings in Safari</h2>
+
+			<div class="step">
+				<h3>Step 1: When you see the warning</h3>
+				<p>Safari will show a warning saying "This Connection Is Not Private"</p>
+			</div>
+
+			<div class="step">
+				<h3>Step 2: Show Details</h3>
+				<p>Click on "Show Details" to see more information about the certificate issue.</p>
+			</div>
+
+			<div class="step">
+				<h3>Step 3: Visit Website</h3>
+				<p>Click on "visit this website" link at the bottom of the details section.</p>
+			</div>
+
+			<div class="step">
+				<h3>Step 4: Confirm in Popup</h3>
+				<p>Click "Visit Website" in the popup dialog to confirm you want to proceed.</p>
+			</div>
+
+			<div class="step">
+				<h3>Step 5: Enter Password</h3>
+				<p>You might need to enter your Mac password to confirm the security exception.</p>
+			</div>
+		</div>
+
+		<div class="step">
+			<h2>Option 2: Switch to HTTP Mode</h2>
+			<p>If you continue having issues, you can run N8N in HTTP mode without certificates:</p>
+			<code>pnpm n8n dev-test --http</code>
+			<p>This will run N8N on HTTP mode, which doesn't require certificates but is less secure.</p>
+		</div>
+
+		<p>
+			Once the certificate is added to your system's trusted certificates, you should be able to
+			access N8N without warnings.
+		</p>
+	</body>
+</html>
