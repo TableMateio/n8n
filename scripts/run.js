@@ -274,6 +274,40 @@ async function waitForServer(protocol, port, maxAttempts = 15) {
   return false;
 }
 
+// Custom URL opener that tries multiple methods
+async function openUrl(url) {
+  console.log(`${colors.green}Attempting to open: ${url}${colors.reset}`);
+
+  try {
+    // Try the imported 'open' package first
+    await open(url, {wait: false});
+    return true;
+  } catch (err) {
+    console.log(`${colors.yellow}Failed to open with 'open' package: ${err.message}${colors.reset}`);
+
+    // Try OS-specific commands as fallbacks
+    try {
+      if (process.platform === 'darwin') {
+        // macOS
+        execSync(`open "${url}"`, {stdio: 'ignore'});
+      } else if (process.platform === 'win32') {
+        // Windows
+        execSync(`start "${url}"`, {stdio: 'ignore'});
+      } else if (process.platform === 'linux') {
+        // Linux
+        execSync(`xdg-open "${url}"`, {stdio: 'ignore'});
+      } else {
+        return false;
+      }
+      return true;
+    } catch (cmdErr) {
+      console.log(`${colors.yellow}Failed to open with OS command: ${cmdErr.message}${colors.reset}`);
+      console.log(`${colors.green}Please manually open: ${url}${colors.reset}`);
+      return false;
+    }
+  }
+}
+
 // Open browser to n8n URL
 async function openBrowser(environment) {
   // Try the configured port/protocol first
@@ -281,8 +315,7 @@ async function openBrowser(environment) {
 
   if (primaryUrl) {
     console.log(`${colors.green}Opening ${primaryUrl} in your browser...${colors.reset}`);
-    await open(primaryUrl);
-    return true;
+    return await openUrl(primaryUrl);
   }
 
   // If that fails, try alternative configurations
@@ -293,8 +326,7 @@ async function openBrowser(environment) {
     const httpsUrl = await waitForServer('https', 5678, 5);
     if (httpsUrl) {
       console.log(`${colors.green}Opening ${httpsUrl} in your browser...${colors.reset}`);
-      await open(httpsUrl);
-      return true;
+      return await openUrl(httpsUrl);
     }
   }
 
@@ -314,8 +346,7 @@ async function openBrowser(environment) {
     const url = await waitForServer(fallback.protocol, fallback.port, 5);
     if (url) {
       console.log(`${colors.green}Opening ${url} in your browser...${colors.reset}`);
-      await open(url);
-      return true;
+      return await openUrl(url);
     }
   }
 
@@ -466,22 +497,31 @@ function runN8N(envKey) {
 
   // Try to open browser after giving n8n some time to start
   setTimeout(async () => {
-    // If we found an explicit n8n URL, use that
-    if (n8nServerUrl) {
-      console.log(`${colors.green}Opening n8n URL: ${n8nServerUrl}${colors.reset}`);
-      await open(n8nServerUrl);
-      return;
-    }
+    try {
+      // If we found an explicit n8n URL, use that
+      if (n8nServerUrl) {
+        console.log(`${colors.green}Opening n8n URL: ${n8nServerUrl}${colors.reset}`);
+        await openUrl(n8nServerUrl);
+        return;
+      }
 
-    // If we found any URLs, open the first one
-    if (detectedUrls.length > 0) {
-      console.log(`${colors.green}Opening UI URL: ${detectedUrls[0]}${colors.reset}`);
-      await open(detectedUrls[0]);
-      return;
-    }
+      // If we found any URLs, open the first one
+      if (detectedUrls.length > 0) {
+        console.log(`${colors.green}Opening UI URL: ${detectedUrls[0]}${colors.reset}`);
+        await openUrl(detectedUrls[0]);
+        return;
+      }
 
-    // Otherwise, try to detect the server automatically
-    await openBrowser(envConfig);
+      // Otherwise, try to detect the server automatically
+      const success = await openBrowser(envConfig);
+      if (!success) {
+        console.log(`${colors.yellow}Unable to auto-open the browser.${colors.reset}`);
+        console.log(`${colors.green}Please manually open: ${envConfig.protocol}://localhost:${envConfig.port}${colors.reset}`);
+      }
+    } catch (error) {
+      console.log(`${colors.yellow}Error opening browser: ${error.message}${colors.reset}`);
+      console.log(`${colors.green}Please manually open: ${envConfig.protocol}://localhost:${envConfig.port}${colors.reset}`);
+    }
   }, 5000);
 }
 
