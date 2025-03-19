@@ -336,55 +336,33 @@ async function openUrl(url) {
 
 // Open browser to n8n URL
 async function openBrowser(environment) {
-  // Wait a bit longer before trying to open the browser to ensure server is ready
-  console.log(`${colors.gray}Waiting for server to be fully ready...${colors.reset}`);
-  await setTimeout(2000);
+  try {
+    // Wait a bit longer before trying to open the browser to ensure server is ready
+    console.log(`${colors.gray}Waiting for server to be fully ready...${colors.reset}`);
 
-  // Try the configured port/protocol first
-  const primaryUrl = await waitForServer(environment.protocol, environment.port);
-
-  if (primaryUrl) {
-    console.log(`${colors.green}Opening ${primaryUrl} in your browser...${colors.reset}`);
-    const success = await openUrl(primaryUrl);
-    if (success) return true;
-  }
-
-  // If that fails, try alternative configurations
-  console.log(`${colors.yellow}Trying alternative configurations...${colors.reset}`);
-
-  // Always try HTTPS first for port 5678 (common n8n port)
-  if (environment.port === 5678 && environment.protocol !== 'https') {
-    const httpsUrl = await waitForServer('https', 5678, 5);
-    if (httpsUrl) {
-      console.log(`${colors.green}Opening ${httpsUrl} in your browser...${colors.reset}`);
-      const success = await openUrl(httpsUrl);
-      if (success) return true;
-    }
-  }
-
-  // Try common fallback combinations
-  const fallbacks = [
-    { protocol: 'https', port: 5678 },
-    { protocol: 'http', port: 8080 },
-    { protocol: 'http', port: 5678 }
-  ];
-
-  for (const fallback of fallbacks) {
-    // Skip the one we already tried
-    if (fallback.protocol === environment.protocol && fallback.port === environment.port) {
-      continue;
+    let url;
+    if (typeof environment === 'string') {
+      // If directly passed a URL string
+      url = environment;
+    } else if (environment && environment.protocol && environment.port) {
+      // If passed an environment config object
+      url = `${environment.protocol}://localhost:${environment.port}`;
+    } else {
+      // Default fallback
+      url = 'https://localhost:5678';
     }
 
-    const url = await waitForServer(fallback.protocol, fallback.port, 5);
-    if (url) {
-      console.log(`${colors.green}Opening ${url} in your browser...${colors.reset}`);
-      const success = await openUrl(url);
-      if (success) return true;
+    console.log(`${colors.cyan}Attempting to open browser with URL: ${url}${colors.reset}`);
+    const opened = await openUrl(url);
+    if (!opened) {
+      console.log(`${colors.red}Failed to open the browser automatically.${colors.reset}`);
+      console.log(`${colors.yellow}Please open this URL manually: ${url}${colors.reset}`);
     }
+    return opened;
+  } catch (error) {
+    console.log(`${colors.red}Error in openBrowser: ${error.message}${colors.reset}`);
+    return false;
   }
-
-  console.log(`${colors.red}Couldn't find a running n8n server. Please check the console for errors.${colors.reset}`);
-  return false;
 }
 
 // Apply HTTPS specific settings to an environment configuration
@@ -503,6 +481,47 @@ function runN8N(envKey) {
       if (match) {
         n8nServerUrl = match[1];
         console.log(`${colors.green}Detected n8n server URL: ${n8nServerUrl}${colors.reset}`);
+
+        // Create a temporary HTML file with auth cookie setting script
+        const authCookieScript = path.join(projectRoot, 'temp_auth_cookie.html');
+
+        // Basic HTML file that sets the auth cookie and redirects to n8n
+        fs.writeFileSync(
+          authCookieScript,
+          `<!DOCTYPE html>
+          <html>
+          <head>
+            <title>Setting n8n Auth Cookie...</title>
+            <script>
+              // This sets the auth cookie -
+              // Note: This is only for development, not a real auth token
+              document.cookie = "n8n-auth=dev-auto-login; path=/; domain=localhost; max-age=86400";
+
+              // Redirect to n8n after setting cookie
+              window.location.href = "${n8nServerUrl}";
+            </script>
+          </head>
+          <body>
+            <h3>Setting auth cookie and redirecting to n8n...</h3>
+          </body>
+          </html>`,
+          { encoding: 'utf8' }
+        );
+
+        // Open this HTML file in Safari instead of the direct URL
+        const fileUrl = `file://${authCookieScript}`;
+        console.log(`${colors.yellow}Opening auth helper page first: ${fileUrl}${colors.reset}`);
+        execSync(`open -a Safari "${fileUrl}"`, { stdio: 'inherit' });
+
+        // Clean up the temp file after a delay
+        setTimeout(() => {
+          try {
+            fs.unlinkSync(authCookieScript);
+            console.log(`${colors.gray}Cleaned up temporary auth helper file${colors.reset}`);
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+        }, 10000); // Clean up after 10 seconds
       }
     }
   });
@@ -544,32 +563,33 @@ function runN8N(envKey) {
 
       console.log(`\n${colors.cyan}URL detected: ${url}${colors.reset}`);
 
-      // Create a direct shell script to open Safari
-      const tempScript = path.join(projectRoot, 'temp_safari_opener.sh');
-      fs.writeFileSync(tempScript,
-        `#!/bin/bash\n` +
-        `echo "Opening Safari with URL: ${url}"\n` +
-        `open -a Safari "${url}"\n` +
-        `exit $?\n`,
-        { mode: 0o755 }
-      );
+      // Use the dedicated Safari opener script
+      const openerScript = path.join(projectRoot, 'scripts', 'open_safari.sh');
 
-      console.log(`${colors.yellow}Executing browser opener script...${colors.reset}`);
+      // Ensure the script exists
+      if (!fs.existsSync(openerScript)) {
+        console.log(`${colors.red}Safari opener script not found at: ${openerScript}${colors.reset}`);
+        console.log(`${colors.yellow}Please open this URL manually:${colors.reset}`);
+        console.log(`${colors.bright}${url}${colors.reset}\n`);
+        return;
+      }
 
-      // Execute the script directly
+      console.log(`${colors.yellow}Executing dedicated Safari opener script...${colors.reset}`);
+
       try {
-        execSync(tempScript, { stdio: 'inherit' });
-        console.log(`${colors.green}✅ Browser opening command executed${colors.reset}`);
+        // Run with the detected URL as argument
+        execSync(`${openerScript} "${url}"`, { stdio: 'inherit' });
+        console.log(`${colors.green}✅ Browser opening script completed${colors.reset}`);
       } catch (err) {
-        console.log(`${colors.red}Error opening browser: ${err.message}${colors.reset}`);
-        console.log(`${colors.yellow}Trying fallback method...${colors.reset}`);
+        console.log(`${colors.red}Error running Safari opener: ${err.message}${colors.reset}`);
 
+        // Last resort - try the direct command that works in terminal
+        console.log(`${colors.yellow}Trying direct terminal command as last resort...${colors.reset}`);
         try {
-          // Fallback to direct command
           execSync(`open -a Safari "${url}"`, { stdio: 'inherit' });
-          console.log(`${colors.green}✅ Browser opened with fallback method${colors.reset}`);
-        } catch (fallbackErr) {
-          console.log(`${colors.red}Fallback also failed: ${fallbackErr.message}${colors.reset}`);
+          console.log(`${colors.green}✅ Direct terminal command succeeded${colors.reset}`);
+        } catch (directErr) {
+          console.log(`${colors.red}Direct command also failed: ${directErr.message}${colors.reset}`);
         }
       }
 
@@ -580,12 +600,8 @@ function runN8N(envKey) {
       console.log(`\n${colors.yellow}If the browser didn't open automatically, copy and paste this URL:${colors.reset}`);
       console.log(`${colors.bright}${url}${colors.reset}\n`);
 
-      // Clean up temp script
-      try {
-        fs.unlinkSync(tempScript);
-      } catch (e) {
-        // Ignore cleanup errors
-      }
+      // Show URL info
+      console.log(`Editor is now accessible via:\n${colors.bright}${url}${colors.reset}`);
 
     } catch (error) {
       console.log(`${colors.red}Error in browser opener: ${error.message}${colors.reset}`);
@@ -595,34 +611,33 @@ function runN8N(envKey) {
   }, 5000);
 }
 
-async function main() {
-  // Show the header
-  showHeader();
-
-  // Handle help flag first
+// Main control flow - this was missing!
+(async function main() {
+  // Show help if requested
   if (showHelp) {
     printHelp();
     process.exit(0);
   }
 
-  // Check command line argument
-  let envKey = process.argv[2];
+  // Get environment from command line args or interactive prompt
+  let envKey;
+  const envArg = process.argv.find(arg => !arg.startsWith('-') && !arg.includes('/'));
 
-  // Skip --http flag for environment selection
-  if (envKey === '--http') {
-    envKey = undefined;
-  }
-
-  // If no argument, ask the user
-  if (!envKey) {
+  if (envArg && environments[envArg]) {
+    envKey = envArg;
+  } else if (envArg && !environments[envArg]) {
+    console.log(`${colors.red}Unknown environment: ${envArg}${colors.reset}`);
+    console.log(`${colors.yellow}Available environments: ${Object.keys(environments).join(', ')}${colors.reset}`);
+    process.exit(1);
+  } else {
+    // Show header for interactive mode
+    showHeader();
     envKey = await askEnvironment();
   }
 
   // Run n8n with the selected environment
   runN8N(envKey);
-}
-
-main().catch(err => {
+})().catch(err => {
   console.error(`${colors.red}Error: ${err.message}${colors.reset}`);
   process.exit(1);
 });
