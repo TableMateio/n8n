@@ -4,6 +4,8 @@
 
 This guide explains how to run n8n with secure HTTPS in all environments. HTTPS is now enabled by default for all modes, providing better security and cross-browser compatibility, especially for Safari.
 
+> **Security Note**: For information on SSL certificate security, troubleshooting, and what to do if certificates are accidentally leaked, please see [SSL Certificate Security Guide](./SSL_CERTIFICATE_SECURITY.md).
+
 ## Quick Start
 
 The simplest way to run n8n with HTTPS is:
