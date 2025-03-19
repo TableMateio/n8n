@@ -278,31 +278,57 @@ async function waitForServer(protocol, port, maxAttempts = 15) {
 async function openUrl(url) {
   console.log(`${colors.green}Attempting to open: ${url}${colors.reset}`);
 
+  // For macOS, we'll try more approaches
+  if (process.platform === 'darwin') {
+    try {
+      // Try macOS 'open' command first, specifically with Safari
+      console.log(`${colors.gray}Trying to open with Safari specifically...${colors.reset}`);
+      execSync(`open -a Safari "${url}"`, {stdio: 'inherit'});
+      console.log(`${colors.green}Successfully opened URL with Safari${colors.reset}`);
+      return true;
+    } catch (err) {
+      console.log(`${colors.yellow}Failed to open with Safari directly: ${err.message}${colors.reset}`);
+
+      try {
+        // Try default browser
+        console.log(`${colors.gray}Trying with default macOS browser...${colors.reset}`);
+        execSync(`open "${url}"`, {stdio: 'inherit'});
+        console.log(`${colors.green}Successfully opened URL with default browser${colors.reset}`);
+        return true;
+      } catch (defaultErr) {
+        console.log(`${colors.yellow}Failed with default browser: ${defaultErr.message}${colors.reset}`);
+      }
+    }
+  }
+
+  // Try the imported 'open' package as fallback
   try {
-    // Try the imported 'open' package first
+    console.log(`${colors.gray}Trying with npm 'open' package...${colors.reset}`);
     await open(url, {wait: false});
+    console.log(`${colors.green}Successfully opened URL with 'open' package${colors.reset}`);
     return true;
   } catch (err) {
     console.log(`${colors.yellow}Failed to open with 'open' package: ${err.message}${colors.reset}`);
 
     // Try OS-specific commands as fallbacks
     try {
-      if (process.platform === 'darwin') {
-        // macOS
-        execSync(`open "${url}"`, {stdio: 'ignore'});
-      } else if (process.platform === 'win32') {
+      if (process.platform === 'win32') {
         // Windows
-        execSync(`start "${url}"`, {stdio: 'ignore'});
+        console.log(`${colors.gray}Trying Windows command...${colors.reset}`);
+        execSync(`start "${url}"`, {stdio: 'inherit'});
+        return true;
       } else if (process.platform === 'linux') {
         // Linux
-        execSync(`xdg-open "${url}"`, {stdio: 'ignore'});
-      } else {
-        return false;
+        console.log(`${colors.gray}Trying Linux command...${colors.reset}`);
+        execSync(`xdg-open "${url}"`, {stdio: 'inherit'});
+        return true;
       }
-      return true;
+      return false;
     } catch (cmdErr) {
-      console.log(`${colors.yellow}Failed to open with OS command: ${cmdErr.message}${colors.reset}`);
+      console.log(`${colors.red}All browser opening methods failed${colors.reset}`);
       console.log(`${colors.green}Please manually open: ${url}${colors.reset}`);
+      console.log(`${colors.gray}Copy and paste this URL into Safari:${colors.reset}`);
+      console.log(`${colors.bright}${url}${colors.reset}`);
       return false;
     }
   }
@@ -310,12 +336,17 @@ async function openUrl(url) {
 
 // Open browser to n8n URL
 async function openBrowser(environment) {
+  // Wait a bit longer before trying to open the browser to ensure server is ready
+  console.log(`${colors.gray}Waiting for server to be fully ready...${colors.reset}`);
+  await setTimeout(2000);
+
   // Try the configured port/protocol first
   const primaryUrl = await waitForServer(environment.protocol, environment.port);
 
   if (primaryUrl) {
     console.log(`${colors.green}Opening ${primaryUrl} in your browser...${colors.reset}`);
-    return await openUrl(primaryUrl);
+    const success = await openUrl(primaryUrl);
+    if (success) return true;
   }
 
   // If that fails, try alternative configurations
@@ -326,7 +357,8 @@ async function openBrowser(environment) {
     const httpsUrl = await waitForServer('https', 5678, 5);
     if (httpsUrl) {
       console.log(`${colors.green}Opening ${httpsUrl} in your browser...${colors.reset}`);
-      return await openUrl(httpsUrl);
+      const success = await openUrl(httpsUrl);
+      if (success) return true;
     }
   }
 
@@ -346,7 +378,8 @@ async function openBrowser(environment) {
     const url = await waitForServer(fallback.protocol, fallback.port, 5);
     if (url) {
       console.log(`${colors.green}Opening ${url} in your browser...${colors.reset}`);
-      return await openUrl(url);
+      const success = await openUrl(url);
+      if (success) return true;
     }
   }
 
@@ -373,6 +406,8 @@ function applyHttpsSettings(env) {
 
 // Run n8n with the specified environment
 function runN8N(envKey) {
+  console.log(`${colors.bright}${colors.red}💥 RUNNING UPDATED SCRIPT - VERSION 1.1 💥${colors.reset}`);
+
   let envConfig = environments[envKey];
 
   if (!envConfig) {
@@ -496,31 +531,66 @@ function runN8N(envKey) {
   });
 
   // Try to open browser after giving n8n some time to start
-  setTimeout(async () => {
+  setTimeout(() => {
     try {
-      // If we found an explicit n8n URL, use that
-      if (n8nServerUrl) {
-        console.log(`${colors.green}Opening n8n URL: ${n8nServerUrl}${colors.reset}`);
-        await openUrl(n8nServerUrl);
-        return;
+      // Get the URL directly from detected URLs or construct it
+      const url = n8nServerUrl ||
+                (detectedUrls.length > 0 ? detectedUrls[0] :
+                `${envConfig.protocol}://localhost:${envConfig.port}`);
+
+      console.log(`\n${colors.bright}${colors.green}==================================${colors.reset}`);
+      console.log(`${colors.bright}${colors.green}🌐 BROWSER OPENING SECTION 🌐${colors.reset}`);
+      console.log(`${colors.bright}${colors.green}==================================${colors.reset}`);
+
+      console.log(`\n${colors.cyan}URL detected: ${url}${colors.reset}`);
+
+      // Create a direct shell script to open Safari
+      const tempScript = path.join(projectRoot, 'temp_safari_opener.sh');
+      fs.writeFileSync(tempScript,
+        `#!/bin/bash\n` +
+        `echo "Opening Safari with URL: ${url}"\n` +
+        `open -a Safari "${url}"\n` +
+        `exit $?\n`,
+        { mode: 0o755 }
+      );
+
+      console.log(`${colors.yellow}Executing browser opener script...${colors.reset}`);
+
+      // Execute the script directly
+      try {
+        execSync(tempScript, { stdio: 'inherit' });
+        console.log(`${colors.green}✅ Browser opening command executed${colors.reset}`);
+      } catch (err) {
+        console.log(`${colors.red}Error opening browser: ${err.message}${colors.reset}`);
+        console.log(`${colors.yellow}Trying fallback method...${colors.reset}`);
+
+        try {
+          // Fallback to direct command
+          execSync(`open -a Safari "${url}"`, { stdio: 'inherit' });
+          console.log(`${colors.green}✅ Browser opened with fallback method${colors.reset}`);
+        } catch (fallbackErr) {
+          console.log(`${colors.red}Fallback also failed: ${fallbackErr.message}${colors.reset}`);
+        }
       }
 
-      // If we found any URLs, open the first one
-      if (detectedUrls.length > 0) {
-        console.log(`${colors.green}Opening UI URL: ${detectedUrls[0]}${colors.reset}`);
-        await openUrl(detectedUrls[0]);
-        return;
+      // Always show manual URL
+      console.log(`\n${colors.bright}${colors.cyan}===============================${colors.reset}`);
+      console.log(`${colors.bright}${colors.cyan}MANUAL URL OPENING INSTRUCTIONS${colors.reset}`);
+      console.log(`${colors.bright}${colors.cyan}===============================${colors.reset}`);
+      console.log(`\n${colors.yellow}If the browser didn't open automatically, copy and paste this URL:${colors.reset}`);
+      console.log(`${colors.bright}${url}${colors.reset}\n`);
+
+      // Clean up temp script
+      try {
+        fs.unlinkSync(tempScript);
+      } catch (e) {
+        // Ignore cleanup errors
       }
 
-      // Otherwise, try to detect the server automatically
-      const success = await openBrowser(envConfig);
-      if (!success) {
-        console.log(`${colors.yellow}Unable to auto-open the browser.${colors.reset}`);
-        console.log(`${colors.green}Please manually open: ${envConfig.protocol}://localhost:${envConfig.port}${colors.reset}`);
-      }
     } catch (error) {
-      console.log(`${colors.yellow}Error opening browser: ${error.message}${colors.reset}`);
-      console.log(`${colors.green}Please manually open: ${envConfig.protocol}://localhost:${envConfig.port}${colors.reset}`);
+      console.log(`${colors.red}Error in browser opener: ${error.message}${colors.reset}`);
+      console.log(`${colors.yellow}Please open this URL manually:${colors.reset}`);
+      console.log(`${colors.bright}${envConfig.protocol}://localhost:${envConfig.port}${colors.reset}`);
     }
   }, 5000);
 }
