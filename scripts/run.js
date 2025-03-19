@@ -10,6 +10,7 @@
  *   node scripts/run.js dev              # Start in development mode (hot reloading)
  *   node scripts/run.js dev-test         # Start in development mode with test data
  *   node scripts/run.js --http           # Use HTTP instead of HTTPS (not recommended)
+ *   node scripts/run.js --help           # Show this help message
  */
 
 const { execSync, spawn } = require('child_process');
@@ -54,6 +55,7 @@ const sslCert = path.join(projectRoot, 'localhost.crt');
 
 // Check command line args for --http flag
 const useHttp = process.argv.includes('--http');
+const showHelp = process.argv.includes('--help') || process.argv.includes('-h');
 
 // Environment configurations - all with HTTPS by default
 const environments = {
@@ -120,6 +122,58 @@ const environments = {
     aliasFor: 'https'
   }
 };
+
+// Print help information
+function printHelp() {
+  console.log(`
+${colors.bright}N8N Runner - A user-friendly way to start n8n${colors.reset}
+
+${colors.green}USAGE:${colors.reset}
+  pnpm n8n [environment] [options]
+  node scripts/run.js [environment] [options]
+
+${colors.green}ENVIRONMENTS:${colors.reset}`);
+
+  Object.entries(environments).forEach(([key, env]) => {
+    // Skip immediate aliases from the list
+    if (env.aliasFor === 'https') return;
+
+    const name = env.aliasFor
+      ? `${key} (alias for ${env.aliasFor})`
+      : key;
+
+    console.log(`  ${colors.cyan}${name.padEnd(12)}${colors.reset} ${env.description}`);
+  });
+
+  console.log(`
+${colors.green}OPTIONS:${colors.reset}
+  ${colors.cyan}--http${colors.reset}      Use HTTP instead of HTTPS (not recommended)
+  ${colors.cyan}--help, -h${colors.reset}  Show this help message
+
+${colors.green}EXAMPLES:${colors.reset}
+  ${colors.gray}# Interactive mode (select environment)${colors.reset}
+  pnpm n8n
+
+  ${colors.gray}# Start in development mode with test data${colors.reset}
+  pnpm n8n dev-test
+
+  ${colors.gray}# Start in HTTP mode${colors.reset}
+  pnpm n8n dev-test --http
+
+${colors.green}SHORTCUTS:${colors.reset}
+  ${colors.gray}# Development with test data${colors.reset}
+  pnpm n8n:dev-test
+
+  ${colors.gray}# Production mode${colors.reset}
+  pnpm n8n:prod
+
+  ${colors.gray}# HTTP mode${colors.reset}
+  pnpm n8n:http
+
+${colors.green}DOCUMENTATION:${colors.reset}
+  See HTTPS.md for more details on HTTPS configuration
+`);
+}
 
 // Check if certificates exist, generate if not
 function ensureCertificates() {
@@ -293,6 +347,7 @@ function runN8N(envKey) {
   if (!envConfig) {
     console.log(`${colors.red}Error: Unknown environment "${envKey}"${colors.reset}`);
     console.log(`${colors.yellow}Available options: ${Object.keys(environments).join(', ')}${colors.reset}`);
+    console.log(`${colors.yellow}Try 'pnpm n8n --help' for more information${colors.reset}`);
     process.exit(1);
   }
 
@@ -433,6 +488,12 @@ function runN8N(envKey) {
 async function main() {
   // Show the header
   showHeader();
+
+  // Handle help flag first
+  if (showHelp) {
+    printHelp();
+    process.exit(0);
+  }
 
   // Check command line argument
   let envKey = process.argv[2];
