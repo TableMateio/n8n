@@ -2,53 +2,48 @@
 
 ## Overview
 
-This guide addresses known issues when running n8n with Safari browser on macOS. We provide multiple ways to run n8n that are compatible with Safari, depending on your needs.
+This guide addresses known issues when running n8n with Safari browser on macOS. We've simplified the process by integrating Safari-specific settings into our main runner script.
 
-## Running Options
+## Safari HTTPS Mode
 
-You can run n8n with Safari in several different ways:
-
-### 1. HTTP Mode (No Secure Cookies)
-
-This is the simplest approach but doesn't use HTTPS:
+The simplest way to run n8n with Safari compatibility is:
 
 ```bash
-# Quick start with HTTP (no secure cookies)
-pnpm safari:direct
+# Run n8n with Safari HTTPS support
+pnpm safari
 ```
 
-### 2. HTTPS Mode (Secure Cookies)
+This command:
+- Sets up HTTPS with self-signed certificates
+- Configures secure cookies properly for Safari
+- Runs n8n in development mode with test data
+- Opens the correct URL in your browser
 
-This is the recommended approach for development and testing APIs:
+## Alternative Methods
+
+If you prefer other approaches, we still maintain these options:
 
 ```bash
-# Run with HTTPS (enables secure cookies)
+# Use the standard interactive runner and select "safari" option
+pnpm n8n
+
+# Use the direct shell script for HTTPS
 pnpm safari:https
 ```
 
-The first time you run this, you'll be prompted to add the self-signed certificate to your system keychain.
+## How It Works
 
-### 3. Full Development Mode with HTTPS
+The Safari mode automatically:
 
-For active development with hot reloading and secure connections:
-
-```bash
-# Run with HTTPS in full development mode
-pnpm safari:https:dev
-```
-
-## Modes and Features Comparison
-
-| Mode | Command | HTTPS | Secure Cookies | Hot Reloading | Test Environment | API Testing |
-|------|---------|-------|----------------|---------------|-------------------|-------------|
-| Direct HTTP | `safari:direct` | ❌ | ❌ | ❌ | ✅ | ✅ |
-| HTTPS | `safari:https` | ✅ | ✅ | ❌ | ✅ | ✅ |
-| HTTPS Dev | `safari:https:dev` | ✅ | ✅ | ✅ | ✅ | ✅ |
+1. Checks for SSL certificates, generating them if needed
+2. Adds the certificate to your system keychain (requires password)
+3. Configures n8n with HTTPS and secure cookies enabled
+4. Starts n8n in development mode with test environment
+5. Opens the correct HTTPS URL in your browser
 
 ## Accessing N8N
 
-- HTTP mode: `http://localhost:5678`
-- HTTPS mode: `https://localhost:5678`
+- Safari HTTPS mode: `https://localhost:5678`
 
 ## Troubleshooting
 
@@ -73,12 +68,15 @@ If you're still having issues:
 4. From the Develop menu, select "Disable Cross-Origin Restrictions" while testing
 5. Restart Safari
 
-## Development Notes
+## Technical Details
 
-Each script sets the following environment variables as needed:
-- `N8N_PROTOCOL`: http or https
-- `N8N_SECURE_COOKIE`: false or true
-- `N8N_PORT`: 5678
-- `N8N_ENVIRONMENT`: test
-- `NODE_ENV`: development
-- `N8N_SSL_KEY`/`N8N_SSL_CERT`: Certificate paths when using HTTPS
+The Safari mode sets these environment variables:
+- `N8N_PROTOCOL=https`
+- `N8N_SECURE_COOKIE=true`
+- `N8N_PORT=5678`
+- `N8N_ENVIRONMENT=test`
+- `NODE_ENV=development`
+- `N8N_SSL_KEY=/path/to/localhost.key`
+- `N8N_SSL_CERT=/path/to/localhost.crt`
+
+All SSL certificate management is handled automatically.

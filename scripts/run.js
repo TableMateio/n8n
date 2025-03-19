@@ -8,6 +8,7 @@
  *   node scripts/run.js prod             # Start in production mode
  *   node scripts/run.js test             # Start in test mode (safe for testing integrations)
  *   node scripts/run.js dev              # Start in development mode (hot reloading)
+ *   node scripts/run.js safari           # Start in Safari-compatible HTTPS mode
  */
 
 const { execSync, spawn } = require('child_process');
@@ -15,6 +16,8 @@ const readline = require('readline');
 const { setTimeout } = require('timers/promises');
 const http = require('http');
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
 
 // Check if required packages are installed, if not, install them
 try {
@@ -41,8 +44,35 @@ const colors = {
   gray: '\x1b[90m'
 };
 
+// Project root - directory one level up from this script
+const projectRoot = path.resolve(__dirname, '..');
+
+// Certificate paths
+const sslKey = path.join(projectRoot, 'localhost.key');
+const sslCert = path.join(projectRoot, 'localhost.crt');
+
 // Environment configurations
 const environments = {
+  "safari": {
+    name: 'Safari HTTPS',
+    description: 'HTTPS mode with secure cookies for Safari',
+    env: {
+      NODE_ENV: 'development',
+      N8N_ENVIRONMENT: 'test',
+      N8N_PROTOCOL: 'https',
+      N8N_SECURE_COOKIE: 'true',
+      N8N_PORT: '5678',
+      N8N_HOST: 'localhost',
+      N8N_EDITOR_BASE_URL: 'https://localhost:5678/',
+      N8N_BROWSER_OPEN_URL: 'true',
+      N8N_SSL_KEY: sslKey,
+      N8N_SSL_CERT: sslCert,
+      N8N_RUNNERS_ENABLED: 'true'
+    },
+    command: 'pnpm dev',
+    port: 5678,
+    protocol: 'https'
+  },
   "dev-test": {
     name: 'Dev + Test',
     description: 'Hot reloading with test data',
@@ -95,6 +125,33 @@ const environments = {
   }
 };
 
+// Check if certificates exist, generate if not
+function ensureCertificates() {
+  console.log(`${colors.cyan}Checking SSL certificates...${colors.reset}`);
+
+  if (!fs.existsSync(sslKey) || !fs.existsSync(sslCert)) {
+    console.log(`${colors.yellow}Certificates not found. Generating self-signed certificates...${colors.reset}`);
+
+    try {
+      execSync(`
+        openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \\
+        -keyout ${sslKey} -out ${sslCert} \\
+        -subj "/CN=localhost" \\
+        -extensions v3_ca -config <(echo -e "[req]\\ndistinguished_name=req\\n[req]\\n[v3_ca]\\nsubjectAltName=DNS:localhost\\nbasicConstraints=critical,CA:true\\n")
+      `, { stdio: 'inherit', shell: '/bin/bash' });
+
+      console.log(`${colors.yellow}Adding certificate to keychain. You'll need to enter your password...${colors.reset}`);
+      execSync(`sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ${sslCert}`,
+               { stdio: 'inherit' });
+    } catch (error) {
+      console.error(`${colors.red}Failed to generate certificates: ${error.message}${colors.reset}`);
+      console.log(`${colors.yellow}You may need to generate certificates manually and place them in project root.${colors.reset}`);
+    }
+  } else {
+    console.log(`${colors.green}Certificates already exist${colors.reset}`);
+  }
+}
+
 // Show a nice header
 function showHeader() {
   console.log(`${colors.blue}╔═════════════════════════╗${colors.reset}`);
@@ -115,7 +172,7 @@ async function askEnvironment() {
       type: 'list',
       name: 'envChoice',
       message: 'Select environment:',
-      default: 'dev-test',
+      default: 'safari',
       choices: choices,
       pageSize: 10
     }
@@ -232,6 +289,11 @@ function runN8N(envKey) {
     // It's okay if nothing was running
   }
 
+  // If we're using HTTPS, ensure certificates are available
+  if (envConfig.protocol === 'https') {
+    ensureCertificates();
+  }
+
   // Prepare environment variables
   const env = { ...process.env, ...envConfig.env };
 
@@ -248,110 +310,106 @@ function runN8N(envKey) {
   const cmd = envConfig.command.split(' ')[0];
   const args = envConfig.command.split(' ').slice(1);
 
-  const childProcess = spawn(cmd, args, {
-    env,
-    stdio: ['inherit', 'pipe', 'inherit'], // Pipe stdout so we can detect URLs
-    shell: true
-  });
+  // Based on environment, run either regular way or directly (Safari mode)
+  let childProcess;
 
-  // Listen for stdout to detect URLs
+  if (envKey === 'safari' && fs.existsSync(path.join(projectRoot, 'packages/cli/bin/n8n'))) {
+    console.log(`${colors.yellow}Using direct n8n executable for Safari mode${colors.reset}`);
+    childProcess = spawn('./packages/cli/bin/n8n', ['start'], {
+      env,
+      cwd: projectRoot,
+      stdio: ['inherit', 'pipe', 'pipe'],
+      shell: true
+    });
+  } else {
+    childProcess = spawn(cmd, args, {
+      env,
+      cwd: process.cwd(),
+      stdio: ['inherit', 'pipe', 'pipe'],
+      shell: true
+    });
+  }
+
+  // Listen for data on stdout and stderr
   childProcess.stdout.on('data', (data) => {
     const output = data.toString();
-    process.stdout.write(output); // Still show the output
+    process.stdout.write(output);
 
-    // Look for n8n ready message specifically
-    if (output.includes('n8n ready on') || output.includes('Editor is now accessible via')) {
-      const match = output.match(/https?:\/\/localhost:[0-9]+/);
-      if (match) {
-        n8nServerUrl = match[0];
-        // If using prod mode, ensure we use https
-        if (envConfig.protocol === 'https' && n8nServerUrl.startsWith('http:')) {
-          n8nServerUrl = n8nServerUrl.replace('http:', 'https:');
+    // Extract any URLs from the output
+    const matches = output.match(urlRegex);
+    if (matches) {
+      console.log(`${colors.green}URLs detected from console output:${colors.reset}`);
+      matches.forEach((url, i) => {
+        if (!detectedUrls.includes(url)) {
+          detectedUrls.push(url);
+          console.log(`  ${i + 1}. ${url}`);
         }
+      });
+    }
+
+    // Look for the n8n server URL
+    if (output.includes('Editor is now accessible via')) {
+      const match = output.match(/(https?:\/\/localhost:[0-9]+)/);
+      if (match) {
+        n8nServerUrl = match[1];
         console.log(`${colors.green}Detected n8n server URL: ${n8nServerUrl}${colors.reset}`);
       }
     }
+  });
 
-    // Find any URLs in the output
-    const matches = output.match(urlRegex);
-    if (matches) {
-      detectedUrls = [...detectedUrls, ...matches];
+  childProcess.stderr.on('data', (data) => {
+    process.stderr.write(data.toString());
+  });
+
+  // When the child process exits
+  childProcess.on('exit', (code) => {
+    if (code !== null) {
+      console.log(`${colors.red}n8n process exited with code ${code}${colors.reset}`);
+      process.exit(code);
     }
   });
 
-  childProcess.on('error', (err) => {
-    console.error(`${colors.red}Failed to start n8n: ${err.message}${colors.reset}`);
+  // Add event handlers for process signals
+  process.on('SIGINT', () => {
+    console.log(`${colors.yellow}Caught interrupt signal, stopping n8n...${colors.reset}`);
+    childProcess.kill('SIGINT');
   });
 
-  // Set a timeout to open the browser after giving the server time to start
-  setTimeout(5000).then(async () => {
-    // Priority order based on environment
-    // For dev environments, prioritize port 8080 (UI frontend)
-    if (envConfig.command.includes('dev')) {
-      const uiUrls = detectedUrls.filter(url => url.includes(':8080'));
-      if (uiUrls.length > 0) {
-        console.log(`${colors.green}Opening UI URL: ${uiUrls[0]}${colors.reset}`);
-        await open(uiUrls[0]);
-        return;
-      }
-    }
+  process.on('SIGTERM', () => {
+    console.log(`${colors.yellow}Caught terminate signal, stopping n8n...${colors.reset}`);
+    childProcess.kill('SIGTERM');
+  });
 
-    // For other environments, check if we detected the n8n server URL
+  // Try to open browser after giving n8n some time to start
+  setTimeout(async () => {
+    // If we found an explicit n8n URL, use that
     if (n8nServerUrl) {
-      console.log(`${colors.green}Opening n8n server URL: ${n8nServerUrl}${colors.reset}`);
+      console.log(`${colors.green}Opening n8n URL: ${n8nServerUrl}${colors.reset}`);
       await open(n8nServerUrl);
       return;
     }
 
-    // For production, prioritize the port 5678 URLs
-    const n8nUrls = detectedUrls.filter(url => url.includes(':5678'));
-    if (n8nUrls.length > 0) {
-      let urlToOpen = n8nUrls[0];
-      // If using prod mode, ensure we use https
-      if (envConfig.protocol === 'https' && urlToOpen.startsWith('http:')) {
-        urlToOpen = urlToOpen.replace('http:', 'https:');
-      }
-      console.log(`${colors.green}Opening n8n URL: ${urlToOpen}${colors.reset}`);
-      await open(urlToOpen);
+    // If we found any URLs, open the first one
+    if (detectedUrls.length > 0) {
+      console.log(`${colors.green}Opening UI URL: ${detectedUrls[0]}${colors.reset}`);
+      await open(detectedUrls[0]);
       return;
     }
 
-    // If no specific URL matched the environment, try any detected URL
-    if (detectedUrls.length > 0) {
-      console.log(`${colors.cyan}URLs detected from console output:${colors.reset}`);
-      detectedUrls.forEach((url, i) => {
-        console.log(`${colors.cyan}  ${i+1}. ${url}${colors.reset}`);
-      });
-
-      // Skip Vite dev server (port 5173) as it's not useful for end users
-      const filteredUrls = detectedUrls.filter(url => !url.includes(':5173'));
-      const urlToOpen = filteredUrls.length > 0 ? filteredUrls[0] : detectedUrls[0];
-
-      console.log(`${colors.green}Opening URL: ${urlToOpen}${colors.reset}`);
-      await open(urlToOpen);
-    } else {
-      // Last resort: Fallback to checking ports
-      openBrowser(envConfig);
-    }
-  });
-
-  return childProcess;
+    // Otherwise, try to detect the server automatically
+    await openBrowser(envConfig);
+  }, 5000);
 }
 
-// Main function
 async function main() {
+  // Show the header
   showHeader();
 
-  let envKey = process.argv[2]; // Get environment from command line args
+  // Check command line argument
+  let envKey = process.argv[2];
 
+  // If no argument, ask the user
   if (!envKey) {
-    // No environment specified, show options and ask
-    envKey = await askEnvironment();
-  }
-
-  // Validate environment
-  if (!environments[envKey]) {
-    console.log(`${colors.red}Error: Unknown environment "${envKey}"${colors.reset}`);
     envKey = await askEnvironment();
   }
 
@@ -359,7 +417,6 @@ async function main() {
   runN8N(envKey);
 }
 
-// Start the script
 main().catch(err => {
   console.error(`${colors.red}Error: ${err.message}${colors.reset}`);
   process.exit(1);
