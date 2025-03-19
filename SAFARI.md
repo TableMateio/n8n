@@ -1,39 +1,45 @@
-# N8N Safari Compatibility Guide
+# N8N HTTPS Compatibility Guide
 
 ## Overview
 
-This guide addresses known issues when running n8n with Safari browser on macOS. We've simplified the process by integrating Safari-specific settings into our main runner script.
+This guide addresses secure HTTPS setup for n8n, which is especially important for Safari browser compatibility. We've made HTTPS the default configuration for the best security and cross-browser compatibility.
 
-## Safari HTTPS Mode
+## Using HTTPS Mode
 
-The simplest way to run n8n with Safari compatibility is:
+The simplest way to run n8n with HTTPS is:
 
 ```bash
-# Run n8n with Safari HTTPS support
-pnpm safari
+# Run n8n with HTTPS support (default)
+pnpm n8n
+# or directly
+pnpm https
 ```
 
 This command:
 - Sets up HTTPS with self-signed certificates
-- Configures secure cookies properly for Safari
+- Configures secure cookies properly
 - Runs n8n in development mode with test data
 - Opens the correct URL in your browser
+- Works with all browsers including Safari
 
 ## Alternative Methods
 
 If you prefer other approaches, we still maintain these options:
 
 ```bash
-# Use the standard interactive runner and select "safari" option
+# Use the standard interactive runner (defaults to HTTPS)
 pnpm n8n
 
-# Use the direct shell script for HTTPS
-pnpm safari:https
+# Backward compatibility for Safari users
+pnpm safari
+
+# HTTP-only mode (not recommended)
+pnpm n8n:http
 ```
 
 ## How It Works
 
-The Safari mode automatically:
+The HTTPS mode automatically:
 
 1. Checks for SSL certificates, generating them if needed
 2. Adds the certificate to your system keychain (requires password)
@@ -43,7 +49,7 @@ The Safari mode automatically:
 
 ## Accessing N8N
 
-- Safari HTTPS mode: `https://localhost:5678`
+- HTTPS mode: `https://localhost:5678`
 
 ## Troubleshooting
 
@@ -58,9 +64,9 @@ When accessing n8n over HTTPS for the first time, you may see security warnings:
 
 This only needs to be done once.
 
-### Safari Security Settings
+### Safari-Specific Issues
 
-If you're still having issues:
+If you're using Safari and having issues:
 
 1. In Safari, go to Preferences > Privacy & Security > Manage Website Data
 2. Search for "localhost" and remove any entries
@@ -68,9 +74,19 @@ If you're still having issues:
 4. From the Develop menu, select "Disable Cross-Origin Restrictions" while testing
 5. Restart Safari
 
+## Why HTTPS is Important
+
+Using HTTPS, even in development:
+
+1. **Security**: Prevents traffic interception and data leakage
+2. **Cookies**: Enables secure cookies that work across all browsers
+3. **Modern APIs**: Many modern web APIs require secure contexts
+4. **Browser Compatibility**: Ensures consistent behavior across all browsers
+5. **Production Similarity**: Your development environment better matches production
+
 ## Technical Details
 
-The Safari mode sets these environment variables:
+The HTTPS mode sets these environment variables:
 - `N8N_PROTOCOL=https`
 - `N8N_SECURE_COOKIE=true`
 - `N8N_PORT=5678`

@@ -8,7 +8,8 @@
  *   node scripts/run.js prod             # Start in production mode
  *   node scripts/run.js test             # Start in test mode (safe for testing integrations)
  *   node scripts/run.js dev              # Start in development mode (hot reloading)
- *   node scripts/run.js safari           # Start in Safari-compatible HTTPS mode
+ *   node scripts/run.js https            # Start in HTTPS mode (secure)
+ *   node scripts/run.js safari           # Alias for HTTPS mode (legacy)
  */
 
 const { execSync, spawn } = require('child_process');
@@ -53,9 +54,9 @@ const sslCert = path.join(projectRoot, 'localhost.crt');
 
 // Environment configurations
 const environments = {
-  "safari": {
-    name: 'Safari HTTPS',
-    description: 'HTTPS mode with secure cookies for Safari',
+  "https": {
+    name: 'HTTPS Mode',
+    description: 'Secure HTTPS with SSL certificates (recommended)',
     env: {
       NODE_ENV: 'development',
       N8N_ENVIRONMENT: 'test',
@@ -72,6 +73,12 @@ const environments = {
     command: 'pnpm dev',
     port: 5678,
     protocol: 'https'
+  },
+  // Keep safari as an alias for backwards compatibility
+  "safari": {
+    name: 'Safari HTTPS',
+    description: 'Alias for HTTPS mode (legacy)',
+    aliasFor: 'https'
   },
   "dev-test": {
     name: 'Dev + Test',
@@ -161,18 +168,23 @@ function showHeader() {
 
 // Ask the user which environment to use with arrow keys
 async function askEnvironment() {
-  const choices = Object.entries(environments).map(([key, env]) => ({
-    name: `${colors.green}${key}${colors.reset} - ${env.name} ${colors.gray}(${env.description})${colors.reset}`,
-    value: key,
-    short: key
-  }));
+  const choices = Object.entries(environments).map(([key, env]) => {
+    // Skip aliases from the primary list
+    if (env.aliasFor) return null;
+
+    return {
+      name: `${colors.green}${key}${colors.reset} - ${env.name} ${colors.gray}(${env.description})${colors.reset}`,
+      value: key,
+      short: key
+    };
+  }).filter(Boolean); // Remove null entries
 
   const { envChoice } = await inquirer.prompt([
     {
       type: 'list',
       name: 'envChoice',
       message: 'Select environment:',
-      default: 'safari',
+      default: 'https', // Make HTTPS the default
       choices: choices,
       pageSize: 10
     }
@@ -270,12 +282,20 @@ async function openBrowser(environment) {
 
 // Run n8n with the specified environment
 function runN8N(envKey) {
-  const envConfig = environments[envKey];
+  let envConfig = environments[envKey];
 
   if (!envConfig) {
     console.log(`${colors.red}Error: Unknown environment "${envKey}"${colors.reset}`);
     console.log(`${colors.yellow}Available options: ${Object.keys(environments).join(', ')}${colors.reset}`);
     process.exit(1);
+  }
+
+  // Handle aliases
+  if (envConfig.aliasFor) {
+    const originalKey = envKey;
+    envKey = envConfig.aliasFor;
+    envConfig = environments[envKey];
+    console.log(`${colors.yellow}Note: '${originalKey}' is an alias for '${envKey}'${colors.reset}`);
   }
 
   console.log(`${colors.green}Starting n8n in ${colors.bright}${envConfig.name}${colors.reset}${colors.green} mode...${colors.reset}\n`);
@@ -310,11 +330,11 @@ function runN8N(envKey) {
   const cmd = envConfig.command.split(' ')[0];
   const args = envConfig.command.split(' ').slice(1);
 
-  // Based on environment, run either regular way or directly (Safari mode)
+  // Based on environment, run either regular way or directly (HTTPS mode)
   let childProcess;
 
-  if (envKey === 'safari' && fs.existsSync(path.join(projectRoot, 'packages/cli/bin/n8n'))) {
-    console.log(`${colors.yellow}Using direct n8n executable for Safari mode${colors.reset}`);
+  if (envKey === 'https' && fs.existsSync(path.join(projectRoot, 'packages/cli/bin/n8n'))) {
+    console.log(`${colors.yellow}Using direct n8n executable for HTTPS mode${colors.reset}`);
     childProcess = spawn('./packages/cli/bin/n8n', ['start'], {
       env,
       cwd: projectRoot,
