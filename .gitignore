@@ -27,3 +27,4 @@ build-storybook.log
 *.pem
 *.crt
 certificates/
+secure-certs/
