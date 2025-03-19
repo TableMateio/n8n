@@ -22,8 +22,8 @@ The Tax Surplus Recovery Automation System will:
 We're adapting an intent-driven architectural approach to N8N:
 
 - **Intents**: Implemented as trigger workflows that monitor for specific conditions and activate appropriate process workflows
-- **Workflows**: Modular processes that fulfill specific business functions
-- **Steps**: Individual nodes within workflows that perform atomic operations
+- **Workflows**: Modular processes that fulfill specific business functions. There are many of various complexities.
+- **Nodes**: Individual nodes within workflows that perform atomic operations
 - **Configuration**: Stored in N8N variables, separate from workflow logic
 
 This approach enables the system to respond to events (like new foreclosure records) by automatically executing the appropriate workflows.
@@ -267,7 +267,7 @@ Each workflow should include:
 Our system will integrate with the existing Airtable data model, which includes these key entities:
 
 - **Foreclosures**: Foreclosure case information
-- **Properties**: Real estate property details 
+- **Properties**: Real estate property details
 - **Auctions**: Property auction records
 - **Counties**: County information
 - **Systems**: External system configurations
@@ -281,4 +281,4 @@ Workflows will interact with these entities through the Airtable nodes, with car
 
 This strategy outlines our approach to building a robust Tax Surplus Recovery System using N8N. By leveraging N8N's workflow capabilities and extending them with custom functionality, we can create a system that effectively automates the complex process of identifying and recovering surplus funds for former property owners.
 
-The modular, configuration-driven approach will enable rapid adaptation to new county systems and changes in existing ones, while maintaining a clean, maintainable codebase. 
+The modular, configuration-driven approach will enable rapid adaptation to new county systems and changes in existing ones, while maintaining a clean, maintainable codebase.

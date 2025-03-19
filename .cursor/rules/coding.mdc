@@ -1,0 +1,206 @@
+---
+description: Principles to code by
+globs: 
+alwaysApply: false
+---
+Coding Guidelines for AI and Developers
+
+Debugging Mode
+	•	Reflect on 5–7 possible sources of the issue
+	•	Narrow down to 1–2 most likely causes
+	•	Add logs to validate assumptions before implementing code fix
+
+Core Principles
+	•	Simplicity & Elegance: Simple, readable, logical.
+	•	Consistency: Follow established patterns.
+	•	Completeness: Implement changes fully.
+	•	Design-First: Code organization = UX. Everything is design.
+
+Working Practices
+	•	Do one task at a time exactly as requested.
+	•	Ask before expanding (creating new files/folders/systems).
+	•	Move slowly, incrementally. Small steps > big leaps.
+	•	No unnecessary packages or premature optimization.
+
+Before starting new tasks, reflect:
+	•	Could this break?
+	•	How might this realistically expand?
+	•	Is current method adaptable enough?
+	•	Make modest adjustments now to handle realistic edge cases.
+
+⸻
+
+Abstract System Design
+
+Core Approaches
+	•	Generate, Don’t Enumerate: Factories/generators > explicit instances.
+	•	Schema-Driven: Changes happen once, in schemas.
+	•	Pattern Recognition: Abstract repetitive patterns immediately.
+	•	Composition > Configuration > Coding: Reusable components, configurable, minimal custom code.
+	•	Derive, Don’t Declare: Automate properties/behaviors; avoid hardcoding.
+	•	Interface Anticipation: Design interfaces anticipating future needs.
+	•	Extensibility by Default: Build clear extension points everywhere.
+	•	Minimize Magic Knowledge: Systems should self-document/self-describe.
+
+Design Thinking Questions
+	•	Unifiable patterns?
+	•	Abstraction clarity?
+	•	Future-proofing?
+	•	Potential interactions?
+	•	Reduce repetition?
+	•	Handle edge cases?
+	•	Hide implementation details?
+	•	Easy testing/debugging?
+	•	Scalability (10x growth)?
+
+Implementation Principles
+	•	Parameterize, don’t hardcode.
+	•	Core first, enhance progressively.
+	•	Data-driven behaviors (less conditional logic).
+	•	Implicit correctness (minimal explicit direction).
+	•	Runtime adaptability (context-aware).
+	•	Clearly separate what from how.
+	•	Systems/tools share same principles.
+	•	Good abstraction = hides complexity intuitively.
+
+⸻
+
+Naming & Organization
+
+Files & Directories
+	•	File names: clear, simple, kebab-case (pre-auction-flow.ts)
+	•	Folders: semantic, clarify purpose (workflows/auction.ts)
+	•	Match names to business & engineering clarity
+	•	Use simple, consistent names for files within a category:
+  ```
+  flows.ts
+  triggers.ts
+  steps.ts
+  ```
+  or
+  ```
+  send.ts
+  post.ts
+  get.ts
+  update.ts
+  ```
+
+	•	Organize directories so the path provides semantic clarity:
+	•	Prefer: `workflows/auction.ts` over `workflows/auctionWorkflow.ts`
+	•	Use folder names that clarify purpose, allowing simpler file names
+
+Variables & Functions
+	•	Classes/interfaces/types/enums: PascalCase
+	•	Variables/functions: camelCase
+	•	Reflect business language over technical jargon.
+	•	Consistent domain-specific terms (e.g., preForeclosure, auctionForeclosure).
+
+⸻
+
+Documentation
+
+Comments & Docs
+	•	Why, not what.
+	•	Group related code with clear headers.
+	•	Purpose-focused (not mechanical descriptions).
+	•	Public methods/interfaces documented with JSDoc.
+
+⸻
+
+Code Changes & Implementation
+
+When Implementing Changes
+	•	Fully remove deprecated code.
+	•	Update all references immediately.
+	•	Preserve essential context/comments.
+	•	Always complete logical changes fully.
+
+Moving Functionality
+	•	Move relevant code, tests, docs.
+	•	Update all imports/references.
+	•	Maintain all important context.
+
+Reasonable Autonomy
+	•	Implement logical units without constant approval.
+	•	Seek guidance for fundamental architectural changes.
+
+⸻
+
+Error Handling & Testing
+
+Errors
+	•	Typed error handling.
+	•	Contextual logging before rethrowing.
+	•	Stack traces in dev environments.
+	•	Structured error objects.
+
+Testing
+	•	Example tests for every flow.
+	•	Co-locate tests with implementation.
+	•	Include error cases.
+	•	Properly mock external services.
+
+⸻
+
+Common AI-Development Issues
+
+Avoiding Partial Implementation
+	•	No partially implemented code.
+	•	Modify all instances if changing a pattern.
+	•	Check for orphaned imports/variables/fragments.
+
+Type Safety
+	•	Maintain strict typing.
+	•	Avoid any (unless explicitly justified).
+	•	Ensure interfaces fully implemented.
+	•	Immediately address type errors.
+
+Component Dependencies
+	•	Update all consumers after API changes.
+	•	Update state-dependent code after state changes.
+	•	Avoid circular dependencies.
+
+Configuration Consistency
+	•	Maintain uniform configuration patterns.
+	•	Update all example configurations after schema changes.
+	•	Justify new configuration patterns clearly.
+
+Async Code
+	•	Consistent async/await usage.
+	•	Always handle promise rejections.
+	•	Don’t mix promise chains and async/await.
+	•	Carefully manage concurrent operations to avoid race conditions.
+
+⸻
+
+Project-Specific Guidelines
+
+Intent-Driven Architecture
+	•	Separate intents from implementations.
+	•	Declarative, outcome-focused intents.
+	•	No implementation details embedded in intent.
+
+Configuration-Driven Workflows
+	•	Keep logic separate from system details.
+	•	Configurations drive behaviors (no hardcoding).
+	•	Validate configurations explicitly.
+
+Step Implementation
+	•	Atomic, single responsibility.
+	•	Explicitly stateless; pass context clearly.
+	•	Return new state; never mutate global state.
+
+⸻
+
+Development Process
+
+Terminal Usage
+	•	Routine operations (package install, git push): no approval needed.
+	•	Clearly assign distinct port numbers per service.
+	•	Close terminals after use.
+
+Git Workflow
+	•	Atomic, clearly scoped commits.
+	•	Descriptive commit messages (what + why).
+	•	Push only when I say to when we've confirmed that it works the proper way
+
