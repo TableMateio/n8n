@@ -22,3 +22,8 @@ packages/**/.turbo
 CHANGELOG-*.md
 *.mdx
 build-storybook.log
+# SSL/TLS Certificates and Keys
+*.key
+*.pem
+*.crt
+certificates/
