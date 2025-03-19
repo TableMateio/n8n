@@ -50,8 +50,8 @@ const colors = {
 const projectRoot = path.resolve(__dirname, '..');
 
 // Certificate paths
-const sslKey = path.join(projectRoot, 'localhost.key');
-const sslCert = path.join(projectRoot, 'localhost.crt');
+const sslKey = path.join(projectRoot, 'secure-certs', 'localhost.key');
+const sslCert = path.join(projectRoot, 'secure-certs', 'localhost.crt');
 
 // Check command line args for --http flag
 const useHttp = process.argv.includes('--http');
