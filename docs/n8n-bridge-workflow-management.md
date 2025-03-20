@@ -581,3 +581,100 @@ A complete example can be found in `tests/mcp/create-configurable-workflow.js` w
 - Creating notification messages with configurable recipients and content
 
 This approach enables more maintainable workflows by separating the configuration concerns from the workflow logic.
+
+### Node Version Compatibility Issues
+
+When creating workflows programmatically, it's important to be aware of n8n node version incompatibility issues. Different nodes may have multiple versions with different parameter structures. Using the wrong version or parameter format can lead to failing nodes.
+
+#### Set Node Version Compatibility
+
+The Set node is a common source of compatibility issues as it has evolved significantly across versions:
+
+##### Version 1 (Legacy)
+```javascript
+{
+  "id": "set-node-id",
+  "name": "Set Variable",
+  "type": "n8n-nodes-base.set",
+  "typeVersion": 1,
+  "parameters": {
+    "values": {
+      "string": [
+        {
+          "name": "variableName",
+          "value": "variableValue"
+        }
+      ]
+    },
+    "options": {}
+  }
+}
+```
+
+##### Version 3.4 (Current)
+```javascript
+{
+  "id": "set-node-id",
+  "name": "Set Variable",
+  "type": "n8n-nodes-base.set",
+  "typeVersion": 3.4,
+  "parameters": {
+    "mode": "manual",
+    "includeOtherFields": true,
+    "include": "all",
+    "assignments": {
+      "assignments": [
+        {
+          "name": "variableName",
+          "type": "string",
+          "value": "variableValue"
+        }
+      ]
+    }
+  }
+}
+```
+
+#### Fixing Version Compatibility Issues
+
+If you encounter a node that appears broken in the n8n UI or doesn't pass data correctly, consider:
+
+1. **Check the Node Version**: Use `typeVersion` to match the n8n instance version
+2. **Update Parameter Structure**: Parameter formats often change between versions
+3. **Use the WorkflowManager**: Create a helper script like this example that fixed the Set node:
+
+```javascript
+async function fixSetNode(workflowId, nodeId) {
+  // Get the workflow
+  const workflow = await workflowManager.getWorkflow(workflowId);
+
+  // Find the node
+  const node = workflow.nodes.find(n => n.id === nodeId);
+
+  // Update to latest version
+  node.typeVersion = 3.4;
+
+  // Update parameter structure
+  node.parameters = {
+    mode: 'manual',
+    includeOtherFields: true,
+    include: 'all',
+    assignments: {
+      assignments: [
+        {
+          name: node.parameters.values.string[0].name,
+          type: 'string',
+          value: node.parameters.values.string[0].value
+        }
+      ]
+    }
+  };
+
+  // Update the workflow
+  return workflowManager.updateWorkflow(workflowId, workflow);
+}
+```
+
+A complete working example can be found in `tests/mcp/fix-set-node.js`.
+
+### Creating Workflows Programmatically
