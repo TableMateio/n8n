@@ -163,3 +163,148 @@ Once you have the n8n-workflow package installed in your project, you can use th
 ## Conclusion
 
 These tools provide a solid foundation for programmatically managing n8n workflows from our codebase. They can be used directly in JavaScript/TypeScript code or from the command line, providing flexibility for different use cases.
+
+## Working with Complex Node Types
+
+Through extensive testing, we've discovered important details about working with specific node types in n8n, particularly those involving branching logic.
+
+### Switch Node Best Practices
+
+The Switch node is commonly used to create conditional branches in workflows but requires specific configuration to work correctly when created programmatically:
+
+1. **Type Version**: Always use `typeVersion: 3.2` for Switch nodes
+   ```javascript
+   {
+     id: 'switch-node-id',
+     name: 'Status Switch',
+     type: 'n8n-nodes-base.switch',
+     typeVersion: 3.2,  // Required for newer switch nodes
+     // ... other properties
+   }
+   ```
+
+2. **Rule Structure**: Switch node rules must follow this structure:
+   ```javascript
+   parameters: {
+     rules: {
+       values: [
+         {
+           outputKey: 'Path Name',  // Name of this output path
+           conditions: {
+             options: {
+               version: 2,
+               leftValue: '',
+               caseSensitive: true,
+               typeValidation: 'strict'
+             },
+             combinator: 'and',
+             conditions: [
+               {
+                 operator: {
+                   type: 'string',
+                   operation: 'equals'  // or other operations
+                 },
+                 leftValue: '={{ $json["fieldName"] }}',  // Format is important
+                 rightValue: 'expectedValue'
+               }
+             ]
+           },
+           renameOutput: true  // Label the output in the UI
+         },
+         // Additional rules follow the same pattern
+       ]
+     },
+     options: {}
+   }
+   ```
+
+3. **Connection Structure**: Each output from the Switch must connect to a different branch:
+   ```javascript
+   // Switch node connections
+   [switchNodeId]: {
+     main: [
+       [  // First output (index 0)
+         {
+           node: 'path-a-node-id',
+           type: 'main',
+           index: 0
+         }
+       ],
+       [  // Second output (index 1)
+         {
+           node: 'path-b-node-id',
+           type: 'main',
+           index: 0
+         }
+       ]
+     ]
+   }
+   ```
+
+4. **Always Include Name-Based Connections**: In addition to ID-based connections, including name-based connections improves reliability:
+   ```javascript
+   'Status Switch': {
+     main: [
+       [
+         {
+           node: 'Handle Completed',
+           type: 'main',
+           index: 0
+         }
+       ],
+       [
+         {
+           node: 'Handle Not Completed',
+           type: 'main',
+           index: 0
+         }
+       ]
+     ]
+   }
+   ```
+
+### General Workflow Creation Best Practices
+
+1. **Use UUID Format IDs**: Use consistent, memorable UUIDs for node IDs:
+   ```javascript
+   const nodeId = 'aaaaaaaa-1111-2222-3333-444444444444';
+   ```
+
+2. **Create vs Update**: It's often more reliable to create a new workflow than to update an existing one with complex changes
+
+3. **Incremental Development**: Build workflows incrementally, testing each step:
+   - Start with a simple workflow of 2-3 nodes
+   - Add complexity one node at a time
+   - Test each addition before proceeding
+
+4. **Saving JSON for Debugging**: Always save created workflows to JSON files for debugging:
+   ```javascript
+   const filename = `workflow-${workflow.id}.json`;
+   fs.writeFileSync(filename, JSON.stringify(workflow, null, 2));
+   ```
+
+5. **Connection Validation**: Always validate connections after creating or updating a workflow:
+   ```javascript
+   console.log('Verifying connections:');
+   Object.entries(workflow.connections).forEach(([sourceId, connections]) => {
+     if (connections.main) {
+       connections.main.forEach((outputs, outputIndex) => {
+         outputs.forEach((connection) => {
+           console.log(
+             `- ${sourceId} (output ${outputIndex}) -> ${connection.node} (input ${connection.index})`
+           );
+         });
+       });
+     }
+   });
+   ```
+
+### Example Workflow with Switch Node
+
+You can find a complete working example in `tests/mcp/create-working-switch-workflow.js` that demonstrates:
+- Proper node structure
+- Switch node configuration
+- Connection handling for branching paths
+- Merging branches back together
+
+This example provides a template for creating other complex workflows with conditional branching.
