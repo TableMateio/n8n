@@ -308,3 +308,93 @@ You can find a complete working example in `tests/mcp/create-working-switch-work
 - Merging branches back together
 
 This example provides a template for creating other complex workflows with conditional branching.
+
+### Creating Disconnected Flows in a Workflow
+
+In n8n, a single workflow can contain multiple disconnected flows, each with its own trigger. This approach has several benefits:
+- Keeping related functionality in one workflow
+- Simplifying management of related processes
+- Reducing the total number of workflows
+
+To create disconnected flows within a single workflow:
+
+1. **Use Separate ID Namespaces**: Use different ID patterns for nodes in each flow:
+   ```javascript
+   // First flow uses 1's pattern
+   const flow1TriggerId = '11111111-0000-0000-0000-000000000001';
+   const flow1NodeId = '11111111-0000-0000-0000-000000000002';
+
+   // Second flow uses 2's pattern
+   const flow2TriggerId = '22222222-0000-0000-0000-000000000001';
+   const flow2NodeId = '22222222-0000-0000-0000-000000000002';
+   ```
+
+2. **Position Flows Separately**: Place each flow at a different y-coordinate:
+   ```javascript
+   // First flow at y=300
+   {
+     id: flow1TriggerId,
+     // ... other properties
+     position: [250, 300],
+   }
+
+   // Second flow at y=500
+   {
+     id: flow2TriggerId,
+     // ... other properties
+     position: [250, 500],
+   }
+   ```
+
+3. **Separate Trigger Nodes**: Each flow needs its own trigger node (Manual, Webhook, Schedule, etc.)
+
+4. **Independent Connection Structures**: Define connections for each flow separately:
+   ```javascript
+   // First flow connections
+   const flow1Connections = {
+     [flow1TriggerId]: {
+       main: [[ { node: flow1NodeId, type: 'main', index: 0 } ]]
+     }
+     // ... more connections for flow 1
+   };
+
+   // Second flow connections
+   const flow2Connections = {
+     [flow2TriggerId]: {
+       main: [[ { node: flow2NodeId, type: 'main', index: 0 } ]]
+     }
+     // ... more connections for flow 2
+   };
+
+   // Combine all connections
+   const allConnections = { ...flow1Connections, ...flow2Connections };
+   ```
+
+5. **Include Name-Based Connections**: For better compatibility, add name-based connections:
+   ```javascript
+   'Manual Trigger': {
+     main: [[ { node: 'First Node', type: 'main', index: 0 } ]]
+   },
+   'Webhook': {
+     main: [[ { node: 'Process Webhook Data', type: 'main', index: 0 } ]]
+   }
+   ```
+
+6. **Verify Flow Independence**: Ensure there are no connections between flows:
+   ```javascript
+   console.log('\nVerifying flow paths:');
+   console.log('\nFirst Flow Path:');
+   console.log('- Trigger -> Node1 -> Node2');
+   console.log('\nSecond Flow Path:');
+   console.log('- Trigger2 -> NodeA -> NodeB');
+   ```
+
+### Example: Workflow with Multiple Triggers
+
+A complete example can be found in `tests/mcp/create-disconnected-flows.js` which demonstrates:
+- A manual trigger flow for fetching and processing data
+- A webhook trigger flow for handling incoming requests
+- Proper positioning and organization of multiple flows
+- Independent execution paths
+
+This pattern is useful for creating complex systems where related but separate processes need to be grouped together.
