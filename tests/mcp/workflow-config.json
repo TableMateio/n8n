@@ -1,0 +1,18 @@
+{
+	"apiEndpoint": "https://jsonplaceholder.typicode.com/todos/1",
+	"requestMethod": "GET",
+	"headers": {
+		"Content-Type": "application/json",
+		"Accept": "application/json"
+	},
+	"requestTimeout": 5000,
+	"enableRetries": true,
+	"maxRetries": 3,
+	"statusField": "completed",
+	"statusValue": true,
+	"processingRules": {
+		"assignTo": "user1",
+		"priority": "high",
+		"notifyEmail": "admin@example.com"
+	}
+}

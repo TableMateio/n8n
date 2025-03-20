@@ -496,3 +496,88 @@ A complete example can be found in `tests/mcp/create-workflow-execution-example.
 - Error handling considerations
 
 This pattern enables building complex systems with clean separation of concerns and promotes reuse of common functionality across multiple workflows.
+
+### Creating Configurable Workflows with External Variables
+
+n8n workflows often require configuration that may change over time. By storing variables in external files, you can:
+- Separate configuration from workflow logic
+- Enable non-technical users to modify workflow behavior
+- Implement environment-specific settings
+- Manage complex configuration in a structured way
+
+To create a workflow that uses external configuration:
+
+1. **Create a Configuration File**: Store your variables in a JSON file:
+   ```json
+   {
+     "apiEndpoint": "https://api.example.com/data",
+     "requestMethod": "GET",
+     "statusField": "completed",
+     "processingRules": {
+       "assignTo": "user1",
+       "priority": "high"
+     }
+   }
+   ```
+
+2. **Read the Configuration File**: Use the Read Binary File node to load the configuration:
+   ```javascript
+   {
+     id: "read-config-node-id",
+     name: "Read Configuration",
+     type: "n8n-nodes-base.readBinaryFile",
+     typeVersion: 1,
+     parameters: {
+       filePath: "/path/to/your/config.json",
+       options: {
+         encoding: "utf8"
+       }
+     }
+   }
+   ```
+
+3. **Use Configuration Variables in Nodes**: Reference the config values in subsequent nodes:
+   ```javascript
+   {
+     id: "http-request-node-id",
+     name: "Make API Request",
+     type: "n8n-nodes-base.httpRequest",
+     typeVersion: 1,
+     parameters: {
+       // Access configuration by parsing the JSON string from the binary data
+       url: "={{ JSON.parse($binary[\"data\"][\"toString\"](\"utf8\")).apiEndpoint }}",
+       method: "={{ JSON.parse($binary[\"data\"][\"toString\"](\"utf8\")).requestMethod }}"
+     }
+   }
+   ```
+
+4. **Process Configuration in Function Nodes**: For more complex configuration handling:
+   ```javascript
+   // In a function node
+   parameters: {
+     functionCode:
+       '// Parse the configuration file content\n' +
+       'const rawData = $items[0].binary.data.toString("utf8");\n' +
+       'const config = JSON.parse(rawData);\n\n' +
+       '// Use configuration values\n' +
+       'return {\n' +
+       '  json: {\n' +
+       '    assignee: config.processingRules.assignTo,\n' +
+       '    priority: config.processingRules.priority,\n' +
+       '    // ... other fields\n' +
+       '  }\n' +
+       '};'
+   }
+   ```
+
+5. **Update Configuration Without Changing Workflows**: Making changes to the workflow behavior is as simple as editing the JSON file without modifying the workflow itself.
+
+### Example: Configurable Workflow
+
+A complete example can be found in `tests/mcp/create-configurable-workflow.js` which demonstrates:
+- Creating and reading from a configuration file (`workflow-config.json`)
+- Dynamically configuring HTTP requests based on external variables
+- Processing data according to configurable rules
+- Creating notification messages with configurable recipients and content
+
+This approach enables more maintainable workflows by separating the configuration concerns from the workflow logic.
