@@ -73,12 +73,35 @@ class WorkflowManager {
 	async updateWorkflow(id, updates) {
 		const currentWorkflow = await this.getWorkflow(id);
 
-		const updatedWorkflow = {
-			...currentWorkflow,
-			...updates,
-		};
+		// Only include the properties that n8n API accepts for updates
+		// Based on API error, 'active' is read-only, so we exclude it
+		const allowedProperties = ['name', 'nodes', 'connections', 'settings', 'staticData'];
 
-		return await this.makeN8nRequest(`/workflows/${id}`, 'PUT', updatedWorkflow);
+		const updateData = {};
+
+		// Include only allowed properties from the current workflow
+		allowedProperties.forEach((prop) => {
+			// Only include properties that exist in the current workflow
+			if (currentWorkflow[prop] !== undefined) {
+				updateData[prop] = currentWorkflow[prop];
+			}
+		});
+
+		// Apply updates, but only for allowed properties
+		Object.keys(updates).forEach((key) => {
+			if (allowedProperties.includes(key)) {
+				updateData[key] = updates[key];
+			} else {
+				console.warn(
+					`Warning: Property '${key}' is not allowed for workflow updates and will be ignored.`,
+				);
+			}
+		});
+
+		// Log what we're sending to help debug
+		console.log(`Updating workflow ${id} with these properties:`, Object.keys(updateData));
+
+		return await this.makeN8nRequest(`/workflows/${id}`, 'PUT', updateData);
 	}
 
 	/**
