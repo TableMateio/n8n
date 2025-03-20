@@ -28,3 +28,7 @@ build-storybook.log
 *.crt
 certificates/
 secure-certs/
+
+# MCP configuration
+.env.mcp
+cursor-mcp-config.json
