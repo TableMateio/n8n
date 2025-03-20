@@ -1,0 +1,335 @@
+{
+  "name": "Dynamic Airtable Configuration (Fixed)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual_trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "include": "all",
+        "assignments": {
+          "assignments": [
+            {
+              "name": "auction_id",
+              "type": "string",
+              "value": "24-10-onondaga-ny"
+            }
+          ]
+        }
+      },
+      "id": "set_sample_id",
+      "name": "Set Sample Auction ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "record",
+        "operation": "search",
+        "application": "airtable",
+        "base": {
+          "__rl": true,
+          "value": "appWxxzsTHMY0MZHu",
+          "mode": "list",
+          "cachedResultName": "Tax Surplus",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblteK8SeHqZ8xQxV",
+          "mode": "list",
+          "cachedResultName": "Auctions",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tblteK8SeHqZ8xQxV"
+        },
+        "filterByFormula": "{Auction} = '{{$json.auction_id}}'",
+        "options": {}
+      },
+      "id": "get_auction",
+      "name": "Get Auction Details",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        650,
+        300
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "KqeYloYYVZeNChgU",
+          "name": "Airtable"
+        }
+      },
+      "notes": "Using field names from the Airtable UI for formulas instead of IDs:\n\nAuction - The primary field\nCounty - The county field"
+    },
+    {
+      "parameters": {},
+      "id": "debug_auction",
+      "name": "Debug Auction",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        850,
+        200
+      ],
+      "notes": "View the auction details retrieved from Airtable"
+    },
+    {
+      "parameters": {
+        "resource": "record",
+        "operation": "search",
+        "application": "airtable",
+        "base": {
+          "__rl": true,
+          "value": "appWxxzsTHMY0MZHu",
+          "mode": "list",
+          "cachedResultName": "Tax Surplus",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblgJ8IbhYrpIqXq4",
+          "mode": "list",
+          "cachedResultName": "Counties",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tblgJ8IbhYrpIqXq4"
+        },
+        "filterByFormula": "{County Name} = '{{$node[\"Get Auction Details\"].json[\"fields\"][\"County\"]}}' ",
+        "options": {}
+      },
+      "id": "get_county",
+      "name": "Get County Information",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        850,
+        400
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "KqeYloYYVZeNChgU",
+          "name": "Airtable"
+        }
+      },
+      "notes": "Retrieves county information based on the auction county field. Using field names in the filter formula."
+    },
+    {
+      "parameters": {},
+      "id": "debug_county",
+      "name": "Debug County",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        200
+      ],
+      "notes": "View the county details retrieved from Airtable"
+    },
+    {
+      "parameters": {
+        "resource": "record",
+        "operation": "search",
+        "application": "airtable",
+        "base": {
+          "__rl": true,
+          "value": "appWxxzsTHMY0MZHu",
+          "mode": "list",
+          "cachedResultName": "Tax Surplus",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl3tOZ5GZNBr1dV1",
+          "mode": "list",
+          "cachedResultName": "Auction Systems",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tbl3tOZ5GZNBr1dV1"
+        },
+        "filterByFormula": "{System Name} = '{{$node[\"Get County Information\"].json[\"fields\"][\"System\"]}}' ",
+        "options": {}
+      },
+      "id": "get_system",
+      "name": "Get Auction System",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        400
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "KqeYloYYVZeNChgU",
+          "name": "Airtable"
+        }
+      },
+      "notes": "Retrieves system information based on the county system field. Using field names in the filter formula."
+    },
+    {
+      "parameters": {},
+      "id": "debug_system",
+      "name": "Debug System",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        200
+      ],
+      "notes": "View the system details retrieved from Airtable"
+    },
+    {
+      "parameters": {
+        "resource": "record",
+        "operation": "search",
+        "application": "airtable",
+        "base": {
+          "__rl": true,
+          "value": "appWxxzsTHMY0MZHu",
+          "mode": "list",
+          "cachedResultName": "Tax Surplus",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblLq0PQKTj9XsYnr",
+          "mode": "list",
+          "cachedResultName": "Configuration",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tblLq0PQKTj9XsYnr"
+        },
+        "filterByFormula": "AND(\n                        {Scope} = 'global',\n                        OR(\n                            {Scope ID} = '',\n                            {Scope ID} = '{{$node[\"Get Auction System\"].json[\"fields\"][\"System Name\"]}}'\n                        )\n                    )",
+        "options": {}
+      },
+      "id": "get_config",
+      "name": "Get Configuration Values",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        400
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "KqeYloYYVZeNChgU",
+          "name": "Airtable"
+        }
+      },
+      "notes": "Retrieves configuration values based on global scope and system name. Using field names in the filter formula."
+    },
+    {
+      "parameters": {},
+      "id": "debug_config",
+      "name": "Debug Config",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1450,
+        200
+      ],
+      "notes": "View the configuration values retrieved from Airtable"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Sample Auction ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Sample Auction ID": {
+      "main": [
+        [
+          {
+            "node": "Get Auction Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Auction Details": {
+      "main": [
+        [
+          {
+            "node": "Debug Auction",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get County Information",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get County Information": {
+      "main": [
+        [
+          {
+            "node": "Debug County",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Auction System",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Auction System": {
+      "main": [
+        [
+          {
+            "node": "Debug System",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Configuration Values",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Configuration Values": {
+      "main": [
+        [
+          {
+            "node": "Debug Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "versionId": "81ecfbf8-d17b-4aff-a2c6-4d1f529550d2",
+  "id": "0bRCD0G5JuGo9GFZ",
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "createdAt": "2025-03-20T23:39:02.030Z",
+  "updatedAt": "2025-03-20T23:39:02.030Z",
+  "triggerCount": 0
+}
