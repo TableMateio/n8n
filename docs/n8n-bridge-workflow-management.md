@@ -11,6 +11,67 @@ As a solution, we've created a set of tools that can be used to manage n8n workf
 1. A CLI tool for interactive workflow management
 2. A JavaScript class for programmatically managing workflows
 
+## Setup and Startup
+
+### Prerequisites
+
+- n8n installed and running locally
+- Node.js (v14 or later)
+
+### Starting the n8n Server
+
+1. Make sure n8n is running on your local machine (default: https://localhost:5678)
+2. Ensure you have a valid API key for authentication
+
+### Starting the MCP Bridge
+
+The MCP Bridge acts as a translation layer between Cursor's MCP protocol and the n8n API.
+
+```bash
+# Navigate to the project root
+cd /path/to/project
+
+# Make the script executable if needed
+chmod +x run-mcp.sh
+
+# Run the MCP bridge
+./run-mcp.sh
+```
+
+The `run-mcp.sh` script:
+- Sets environment variables for n8n connection
+- Disables TLS certificate validation for localhost development
+- Starts the custom MCP bridge script (mcp-bridge.js)
+
+### Testing the Connection
+
+After starting both servers, you can test the connection using:
+
+```bash
+cd tests/mcp
+node test-connection.js
+```
+
+This should list the workflows available in your n8n instance.
+
+### Using the Alternative Tools
+
+If you encounter issues with the MCP bridge (such as certificate validation problems), you can use the alternative tools we've created:
+
+1. Use the CLI tool directly:
+   ```bash
+   cd tests/mcp
+   node n8n-cli.js list
+   ```
+
+2. Use the workflow-manager.js in your scripts:
+   ```bash
+   cd tests/mcp
+   node test-create-workflow.js
+   ```
+
+These tools provide the same functionality as the MCP bridge but using a direct approach that may be more reliable in some environments.
+
 ## CLI Tool
 
 The CLI tool is located at `tests/mcp/n8n-cli.js` and provides a command-line interface for managing n8n workflows. It can be used in both interactive and command-line modes.
