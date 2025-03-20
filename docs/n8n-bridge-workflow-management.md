@@ -398,3 +398,101 @@ A complete example can be found in `tests/mcp/create-disconnected-flows.js` whic
 - Independent execution paths
 
 This pattern is useful for creating complex systems where related but separate processes need to be grouped together.
+
+### Calling One Workflow from Another
+
+n8n provides the ability to create modular, reusable workflows by allowing one workflow to call another. This approach has several benefits:
+- Promotes code reuse and modular design
+- Simplifies maintenance by isolating functionality
+- Enables building complex processes from smaller, testable components
+
+To create a workflow that calls another workflow:
+
+1. **Create the Callee Workflow First**: Create the workflow that will be called (the "callee"):
+   ```javascript
+   // Define callee workflow nodes
+   const calleeNodes = [
+     {
+       id: "callee-trigger-id",
+       name: "When Called",
+       type: "n8n-nodes-base.manualTrigger",
+       // ... other properties
+     },
+     // ... processing nodes
+   ];
+
+   const calleeWorkflow = await manager.createWorkflow("Reusable Process", calleeNodes, calleeConnections);
+   ```
+
+2. **Use the Execute Workflow Node**: In the caller workflow, use the `executeWorkflow` node type:
+   ```javascript
+   {
+     id: "execute-workflow-node-id",
+     name: "Execute Process Workflow",
+     type: "n8n-nodes-base.executeWorkflow",
+     typeVersion: 1,
+     position: [650, 300],
+     parameters: {
+       workflowId: calleeWorkflowId,  // ID of the workflow to execute
+       options: {}
+     }
+   }
+   ```
+
+3. **Pass Data to the Callee Workflow**: Data from the caller workflow is automatically passed to the callee:
+   ```javascript
+   // In a node before the Execute Workflow node
+   {
+     id: "prepare-data-node-id",
+     name: "Prepare Data",
+     type: "n8n-nodes-base.set",
+     // ... other properties
+     parameters: {
+       values: {
+         string: [
+           {
+             name: "dataForCallee",
+             value: "This will be available in the callee workflow"
+           }
+         ]
+       }
+     }
+   }
+   ```
+
+4. **Handle Results from the Callee**: The output from the callee workflow is returned to the caller:
+   ```javascript
+   // In a node after the Execute Workflow node
+   {
+     id: "result-handler-id",
+     name: "Handle Result",
+     type: "n8n-nodes-base.function",
+     // ... other properties
+     parameters: {
+       functionCode:
+         '// Access data returned from the callee\n' +
+         'const calleeResult = $input.item.json;\n' +
+         'return {\n' +
+         '  json: {\n' +
+         '    ...calleeResult,\n' +
+         '    processedByCaller: true\n' +
+         '  }\n' +
+         '};'
+     }
+   }
+   ```
+
+5. **Workflow Execution Context**: The callee workflow runs in the context of the caller:
+   - The execution is synchronous - the caller waits for the callee to complete
+   - Error handling can be implemented in the caller
+   - Data is passed seamlessly between workflows
+
+### Example: Workflow Execution
+
+A complete example can be found in `tests/mcp/create-workflow-execution-example.js` which demonstrates:
+- A "callee" workflow that processes data and returns results
+- A "caller" workflow that prepares data, calls the callee, and processes the results
+- Proper data passing between workflows
+- Error handling considerations
+
+This pattern enables building complex systems with clean separation of concerns and promotes reuse of common functionality across multiple workflows.
