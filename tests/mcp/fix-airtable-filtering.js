@@ -1,229 +1,149 @@
 /**
- * This script fixes the Airtable filtering in the Dynamic Airtable Configuration workflow
- *
- * It ensures all Airtable nodes have the proper structure and filtering parameters
- * based on the working format observed in n8n
+ * This script updates the filter formulas in the existing Dynamic Airtable Configuration workflow
+ * to use field names instead of field IDs for better readability and reliability.
  */
 
+const fs = require('fs');
+const path = require('path');
 const WorkflowManager = require('./workflow-manager');
 const AIRTABLE_REFERENCE = require('../../scripts/airtable-reference');
 
-/**
- * Fixes Airtable filtering in the workflow
- */
-async function fixAirtableFiltering() {
-	// Initialize workflow manager
-	const workflowManager = new WorkflowManager(
-		'https://127.0.0.1:5678',
-		'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzY2E5MjMwZi1hMDVkLTQ4NjQtOGI5ZS03OWU5NDI3YWUzN2IiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzQyNDIxNjk5fQ.tfUSCT54tNBRfHhQnse-uYHhO7qaGx25JAaUD_22sRU',
-	);
-
-	// Get the workflow ID (hard-coded based on previous runs)
-	const workflowId = 'SlR4PULINjXn4p11';
-
+async function updateAirtableFiltering() {
 	try {
-		// Get the workflow
-		console.log(`Getting workflow with ID ${workflowId}...`);
-		const workflow = await workflowManager.getWorkflow(workflowId);
-		console.log(`Found workflow: ${workflow.name}`);
+		console.log('Updating Airtable filter formulas in the workflow...');
 
-		// Save original workflow for reference
-		const fs = require('fs');
-		const path = require('path');
+		// Initialize workflow manager
+		const workflowManager = new WorkflowManager(
+			'https://127.0.0.1:5678',
+			'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzY2E5MjMwZi1hMDVkLTQ4NjQtOGI5ZS03OWU5NDI3YWUzN2IiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzQyNDIxNjk5fQ.tfUSCT54tNBRfHhQnse-uYHhO7qaGx25JAaUD_22sRU',
+		);
+
+		// Get field name constants for clearer formulas
+		const auctionFieldName =
+			AIRTABLE_REFERENCE.FIELD_NAMES.AUCTION[AIRTABLE_REFERENCE.FIELD_IDS.AUCTION.PRIMARY_FIELD];
+		const countyFieldName =
+			AIRTABLE_REFERENCE.FIELD_NAMES.COUNTY[AIRTABLE_REFERENCE.FIELD_IDS.COUNTY.PRIMARY_FIELD];
+		const systemFieldName =
+			AIRTABLE_REFERENCE.FIELD_NAMES.SYSTEM[AIRTABLE_REFERENCE.FIELD_IDS.SYSTEM.PRIMARY_FIELD];
+		const scopeFieldName =
+			AIRTABLE_REFERENCE.FIELD_NAMES.CONFIG[AIRTABLE_REFERENCE.FIELD_IDS.CONFIG.SCOPE];
+		const scopeIdFieldName =
+			AIRTABLE_REFERENCE.FIELD_NAMES.CONFIG[AIRTABLE_REFERENCE.FIELD_IDS.CONFIG.SCOPE_ID];
+
+		// Get the county field name from auction table
+		const auctionCountyFieldName =
+			AIRTABLE_REFERENCE.FIELD_NAMES.AUCTION[AIRTABLE_REFERENCE.FIELD_IDS.AUCTION.COUNTY];
+
+		// Get the system field name from county table
+		const countySystemFieldName =
+			AIRTABLE_REFERENCE.FIELD_NAMES.COUNTY[AIRTABLE_REFERENCE.FIELD_IDS.COUNTY.SYSTEM];
+
+		// Find the existing workflow (using ID directly if available)
+		console.log('Searching for the existing workflow...');
+		const workflows = await workflowManager.listWorkflows();
+
+		// Try to find the workflow by name
+		let workflowId;
+		const workflowName = 'Dynamic Airtable Configuration (Fixed)';
+
+		for (const workflow of workflows) {
+			if (workflow.name === workflowName) {
+				workflowId = workflow.id;
+				break;
+			}
+		}
+
+		if (!workflowId) {
+			console.error(`Workflow with name "${workflowName}" not found`);
+			return;
+		}
+
+		console.log(`Found workflow with ID: ${workflowId}`);
+
+		// Retrieve the workflow data
+		const workflowData = await workflowManager.getWorkflow(workflowId);
+
+		// Save the original workflow for reference
 		const originalWorkflowPath = path.join(__dirname, 'original-workflow-before-airtable-fix.json');
-		fs.writeFileSync(originalWorkflowPath, JSON.stringify(workflow, null, 2));
+		fs.writeFileSync(originalWorkflowPath, JSON.stringify(workflowData, null, 2));
 		console.log(`Original workflow saved to ${originalWorkflowPath}`);
 
-		// Update nodes with the proper structure
-		const updatedNodes = workflow.nodes.map((node) => {
-			if (node.type === 'n8n-nodes-base.airtable' && node.name === 'Get Auction Details') {
-				console.log(`Updating node: ${node.name}`);
-				node.parameters = {
-					resource: 'record',
-					operation: 'search',
-					application: 'airtable',
-					base: {
-						__rl: true,
-						value: AIRTABLE_REFERENCE.BASE_ID,
-						mode: 'list',
-						cachedResultName: 'Tax Surplus',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}`,
-					},
-					table: {
-						__rl: true,
-						value: AIRTABLE_REFERENCE.TABLES.AUCTIONS,
-						mode: 'list',
-						cachedResultName: 'Auctions',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}/${AIRTABLE_REFERENCE.TABLES.AUCTIONS}`,
-					},
-					// Use field name instead of ID in the filter formula
-					filterByFormula: AIRTABLE_REFERENCE.createFilterFormula(
-						'AUCTION',
-						AIRTABLE_REFERENCE.FIELD_IDS.AUCTION.PRIMARY_FIELD,
-						'{{$json.auction_id}}',
-					),
-					options: {},
-				};
-				node.typeVersion = 2;
-				node.credentials = {
-					airtableTokenApi: {
-						id: 'Airtable',
-						name: 'Airtable',
-					},
-				};
-			} else if (
-				node.type === 'n8n-nodes-base.airtable' &&
-				node.name === 'Get County Information'
-			) {
-				console.log(`Updating node: ${node.name}`);
+		// Create a copy of the workflow to modify
+		const updatedWorkflow = JSON.parse(JSON.stringify(workflowData));
 
-				// Get the field names for clearer formula
-				const countyFieldName =
-					AIRTABLE_REFERENCE.FIELD_NAMES.COUNTY[AIRTABLE_REFERENCE.FIELD_IDS.COUNTY.PRIMARY_FIELD];
-				const auctionCountyFieldName =
-					AIRTABLE_REFERENCE.FIELD_NAMES.AUCTION[AIRTABLE_REFERENCE.FIELD_IDS.AUCTION.COUNTY];
+		// Update each Airtable node's filter formula
+		let updated = false;
 
-				node.parameters = {
-					resource: 'record',
-					operation: 'search',
-					application: 'airtable',
-					base: {
-						__rl: true,
-						value: AIRTABLE_REFERENCE.BASE_ID,
-						mode: 'list',
-						cachedResultName: 'Tax Surplus',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}`,
-					},
-					table: {
-						__rl: true,
-						value: AIRTABLE_REFERENCE.TABLES.COUNTIES,
-						mode: 'list',
-						cachedResultName: 'Counties',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}/${AIRTABLE_REFERENCE.TABLES.COUNTIES}`,
-					},
-					// Use field names throughout the formula
-					filterByFormula: `{${countyFieldName}} = '{{$node["Get Auction Details"].json["fields"]["${auctionCountyFieldName}"]}}' `,
-					options: {},
-				};
-				node.typeVersion = 2;
-				node.credentials = {
-					airtableTokenApi: {
-						id: 'Airtable',
-						name: 'Airtable',
-					},
-				};
-			} else if (node.type === 'n8n-nodes-base.airtable' && node.name === 'Get Auction System') {
-				console.log(`Updating node: ${node.name}`);
+		for (const node of updatedWorkflow.nodes) {
+			if (node.type === 'n8n-nodes-base.airtable' && node.parameters.operation === 'search') {
+				console.log(`Updating filter formula for node: ${node.name}`);
 
-				// Get the field names for clearer formula
-				const systemFieldName =
-					AIRTABLE_REFERENCE.FIELD_NAMES.SYSTEM[AIRTABLE_REFERENCE.FIELD_IDS.SYSTEM.PRIMARY_FIELD];
-				const countySystemFieldName =
-					AIRTABLE_REFERENCE.FIELD_NAMES.COUNTY[AIRTABLE_REFERENCE.FIELD_IDS.COUNTY.SYSTEM];
+				// Store the original filter formula for reference
+				const originalFormula = node.parameters.filterByFormula;
 
-				node.parameters = {
-					resource: 'record',
-					operation: 'search',
-					application: 'airtable',
-					base: {
-						__rl: true,
-						value: AIRTABLE_REFERENCE.BASE_ID,
-						mode: 'list',
-						cachedResultName: 'Tax Surplus',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}`,
-					},
-					table: {
-						__rl: true,
-						value: AIRTABLE_REFERENCE.TABLES.SYSTEMS,
-						mode: 'list',
-						cachedResultName: 'Auction Systems',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}/${AIRTABLE_REFERENCE.TABLES.SYSTEMS}`,
-					},
-					// Use field names throughout the formula
-					filterByFormula: `{${systemFieldName}} = '{{$node["Get County Information"].json["fields"]["${countySystemFieldName}"]}}' `,
-					options: {},
-				};
-				node.typeVersion = 2;
-				node.credentials = {
-					airtableTokenApi: {
-						id: 'Airtable',
-						name: 'Airtable',
-					},
-				};
-			} else if (
-				node.type === 'n8n-nodes-base.airtable' &&
-				node.name === 'Get Configuration Values'
-			) {
-				console.log(`Updating node: ${node.name}`);
+				// Update filter formula based on the node name/purpose
+				if (node.name === 'Get Auction Details') {
+					// Use field name in filter formula with EXPRESSION MODE
+					node.parameters.filterByFormula = `={${auctionFieldName}} = '{{$json.auction_id}}'`;
+					node.notes =
+						'Using field names from the Airtable UI for formulas instead of IDs:\n\nAuction - The primary field\nCounty - The county field';
+					updated = true;
+				} else if (node.name === 'Get County Information') {
+					// Use field name in filter formula with EXPRESSION MODE
+					node.parameters.filterByFormula = `={${countyFieldName}} = '{{$node["Get Auction Details"].json["fields"]["${auctionCountyFieldName}"]}}' `;
+					node.notes =
+						'Retrieves county information based on the auction county field. Using field names in the filter formula.';
+					updated = true;
+				} else if (node.name === 'Get Auction System') {
+					// Use field name in filter formula with EXPRESSION MODE
+					node.parameters.filterByFormula = `={${systemFieldName}} = '{{$node["Get County Information"].json["fields"]["${countySystemFieldName}"]}}' `;
+					node.notes =
+						'Retrieves system information based on the county system field. Using field names in the filter formula.';
+					updated = true;
+				} else if (node.name === 'Get Configuration Values') {
+					// Use field names in filter formula with EXPRESSION MODE
+					node.parameters.filterByFormula = `=AND(
+                        {${scopeFieldName}} = 'global',
+                        OR(
+                            {${scopeIdFieldName}} = '',
+                            {${scopeIdFieldName}} = '{{$node["Get Auction System"].json["fields"]["${systemFieldName}"]}}'
+                        )
+                    )`;
+					node.notes =
+						'Retrieves configuration values based on global scope and system name. Using field names in the filter formula.';
+					updated = true;
+				}
 
-				// Get field names for config values filtering
-				const scopeFieldName =
-					AIRTABLE_REFERENCE.FIELD_NAMES.CONFIG[AIRTABLE_REFERENCE.FIELD_IDS.CONFIG.SCOPE];
-				const scopeIdFieldName =
-					AIRTABLE_REFERENCE.FIELD_NAMES.CONFIG[AIRTABLE_REFERENCE.FIELD_IDS.CONFIG.SCOPE_ID];
-				const systemNameFieldName =
-					AIRTABLE_REFERENCE.FIELD_NAMES.SYSTEM[AIRTABLE_REFERENCE.FIELD_IDS.SYSTEM.PRIMARY_FIELD];
-
-				node.parameters = {
-					resource: 'record',
-					operation: 'search',
-					application: 'airtable',
-					base: {
-						__rl: true,
-						value: AIRTABLE_REFERENCE.BASE_ID,
-						mode: 'list',
-						cachedResultName: 'Tax Surplus',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}`,
-					},
-					table: {
-						__rl: true,
-						value: AIRTABLE_REFERENCE.TABLES.CONFIG,
-						mode: 'list',
-						cachedResultName: 'Configuration',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}/${AIRTABLE_REFERENCE.TABLES.CONFIG}`,
-					},
-					// Use field names throughout the formula
-					filterByFormula: `AND(
-						{${scopeFieldName}} = 'global',
-						OR(
-							{${scopeIdFieldName}} = '',
-							{${scopeIdFieldName}} = '{{$node["Get Auction System"].json["fields"]["${systemNameFieldName}"]}}'
-						)
-					)`,
-					options: {},
-				};
-				node.typeVersion = 2;
-				node.credentials = {
-					airtableTokenApi: {
-						id: 'Airtable',
-						name: 'Airtable',
-					},
-				};
+				// Log the changes if the formula was updated
+				if (originalFormula !== node.parameters.filterByFormula) {
+					console.log(`  - Original formula: ${originalFormula}`);
+					console.log(`  - Updated formula: ${node.parameters.filterByFormula}`);
+				}
 			}
-			return node;
-		});
+		}
 
-		// Update the workflow with the fixed nodes
-		const updatedWorkflow = {
-			...workflow,
-			nodes: updatedNodes,
-		};
+		if (!updated) {
+			console.log('No filter formulas needed updating.');
+			return;
+		}
 
-		// Save fixed workflow for reference
-		const fixedWorkflowPath = path.join(__dirname, 'fixed-workflow-with-airtable-filtering.json');
-		fs.writeFileSync(fixedWorkflowPath, JSON.stringify(updatedWorkflow, null, 2));
-		console.log(`Fixed workflow saved to ${fixedWorkflowPath}`);
-
-		// Update the workflow in n8n
-		console.log('Updating workflow in n8n...');
+		// Update the workflow
+		console.log('\nUpdating the workflow...');
 		await workflowManager.updateWorkflow(workflowId, updatedWorkflow);
-		console.log(
-			'Workflow updated successfully! Please refresh your n8n browser tab to see the changes.',
-		);
+		console.log(`✅ Workflow ${workflowId} updated successfully!`);
+
+		// Save the updated workflow for reference
+		const updatedWorkflowPath = path.join(__dirname, 'fixed-workflow-with-airtable-filtering.json');
+		fs.writeFileSync(updatedWorkflowPath, JSON.stringify(updatedWorkflow, null, 2));
+		console.log(`Updated workflow saved to ${updatedWorkflowPath}`);
+
+		console.log('\nPlease refresh your n8n browser tab to see the updated workflow.');
 	} catch (error) {
-		console.error('Error fixing Airtable filtering:', error);
+		console.error('Error updating workflow:', error);
 	}
 }
 
-// Execute the main function
-fixAirtableFiltering();
+// Execute the function
+updateAirtableFiltering().catch((error) => {
+	console.error('Error running the script:', error);
+});

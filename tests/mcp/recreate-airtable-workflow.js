@@ -91,8 +91,8 @@ async function recreateAirtableWorkflow() {
 						cachedResultName: 'Auctions',
 						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}/${AIRTABLE_REFERENCE.TABLES.AUCTIONS}`,
 					},
-					// Use field name in filter formula
-					filterByFormula: `{${auctionFieldName}} = '{{$json.auction_id}}'`,
+					// Use field name in filter formula - USING EXPRESSION MODE
+					filterByFormula: `={${auctionFieldName}} = '{{$json.auction_id}}'`,
 					options: {},
 				},
 				id: 'get_auction',
@@ -139,8 +139,8 @@ async function recreateAirtableWorkflow() {
 						cachedResultName: 'Counties',
 						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}/${AIRTABLE_REFERENCE.TABLES.COUNTIES}`,
 					},
-					// Use field name in filter formula - both field name and field value reference
-					filterByFormula: `{${countyFieldName}} = '{{$node["Get Auction Details"].json["fields"]["${auctionCountyFieldName}"]}}' `,
+					// Use field name in filter formula - USING EXPRESSION MODE
+					filterByFormula: `={${countyFieldName}} = '{{$node["Get Auction Details"].json["fields"]["${auctionCountyFieldName}"]}}' `,
 					options: {},
 				},
 				id: 'get_county',
@@ -187,8 +187,8 @@ async function recreateAirtableWorkflow() {
 						cachedResultName: 'Auction Systems',
 						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}/${AIRTABLE_REFERENCE.TABLES.SYSTEMS}`,
 					},
-					// Use field name in filter formula - both field name and field value reference
-					filterByFormula: `{${systemFieldName}} = '{{$node["Get County Information"].json["fields"]["${countySystemFieldName}"]}}' `,
+					// Use field name in filter formula - USING EXPRESSION MODE
+					filterByFormula: `={${systemFieldName}} = '{{$node["Get County Information"].json["fields"]["${countySystemFieldName}"]}}' `,
 					options: {},
 				},
 				id: 'get_system',
@@ -235,8 +235,8 @@ async function recreateAirtableWorkflow() {
 						cachedResultName: 'Configuration',
 						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}/${AIRTABLE_REFERENCE.TABLES.CONFIG}`,
 					},
-					// Use field names in filter formula, including for system name reference
-					filterByFormula: `AND(
+					// Use field names in filter formula - USING EXPRESSION MODE
+					filterByFormula: `=AND(
                         {${scopeFieldName}} = 'global',
                         OR(
                             {${scopeIdFieldName}} = '',

@@ -1,16 +1,16 @@
 {
-  "name": "Airtable Field Name vs ID Test",
+  "name": "Airtable Filter Formula Test",
   "nodes": [
     {
       "parameters": {},
+      "id": "manual_trigger",
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
         250,
         300
-      ],
-      "id": "06f32223-9066-4c47-a89e-d4bf36351b04"
+      ]
     },
     {
       "parameters": {
@@ -27,38 +27,39 @@
           ]
         }
       },
+      "id": "set_sample_id",
       "name": "Set Sample Auction ID",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
         450,
         300
-      ],
-      "id": "28e56419-e1f5-4057-87ad-f9f9756605e4"
+      ]
     },
     {
       "parameters": {
-        "operation": "search",
         "resource": "record",
+        "operation": "search",
         "application": "airtable",
         "base": {
           "__rl": true,
-          "value": "appWxxzsTHMY0MZHu",
+          "value": "appAFwvoSRiOQc2pP",
           "mode": "list",
           "cachedResultName": "Tax Surplus",
-          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu"
+          "cachedResultUrl": "https://airtable.com/appAFwvoSRiOQc2pP"
         },
         "table": {
           "__rl": true,
-          "value": "tblteK8SeHqZ8xQxV",
+          "value": "tblvlBDwuCE7CmThU",
           "mode": "list",
           "cachedResultName": "Auctions",
-          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tblteK8SeHqZ8xQxV"
+          "cachedResultUrl": "https://airtable.com/appAFwvoSRiOQc2pP/tblvlBDwuCE7CmThU"
         },
-        "filterByFormula": "{fld7zoOS3uQg4tiyh} = '{{$json.auction_id}}'",
+        "filterByFormula": "{Auction} = '24-10-onondaga-ny'",
         "options": {}
       },
-      "name": "Test 1: Using Field ID",
+      "id": "test_1_fixed",
+      "name": "Test 1: Fixed Value",
       "type": "n8n-nodes-base.airtable",
       "typeVersion": 2,
       "position": [
@@ -71,70 +72,32 @@
           "name": "Airtable"
         }
       },
-      "notes": "This node attempts to search using the field ID: fld7zoOS3uQg4tiyh\nThis approach doesn't work because Airtable formulas expect field names, not IDs",
-      "id": "e0639489-70f9-4f61-9d81-33ed91d0b4dd"
+      "notes": "Using a fixed value directly - NOT using expression mode"
     },
     {
       "parameters": {
-        "operation": "search",
         "resource": "record",
+        "operation": "search",
         "application": "airtable",
         "base": {
           "__rl": true,
-          "value": "appWxxzsTHMY0MZHu",
+          "value": "appAFwvoSRiOQc2pP",
           "mode": "list",
           "cachedResultName": "Tax Surplus",
-          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu"
+          "cachedResultUrl": "https://airtable.com/appAFwvoSRiOQc2pP"
         },
         "table": {
           "__rl": true,
-          "value": "tblteK8SeHqZ8xQxV",
+          "value": "tblvlBDwuCE7CmThU",
           "mode": "list",
           "cachedResultName": "Auctions",
-          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tblteK8SeHqZ8xQxV"
+          "cachedResultUrl": "https://airtable.com/appAFwvoSRiOQc2pP/tblvlBDwuCE7CmThU"
         },
-        "filterByFormula": "{Auction} = '{{$json.auction_id}}'",
+        "filterByFormula": "={Auction} = '{{$json.auction_id}}'",
         "options": {}
       },
-      "name": "Test 2: Using Field Name",
-      "type": "n8n-nodes-base.airtable",
-      "typeVersion": 2,
-      "position": [
-        650,
-        300
-      ],
-      "credentials": {
-        "airtableTokenApi": {
-          "id": "KqeYloYYVZeNChgU",
-          "name": "Airtable"
-        }
-      },
-      "notes": "This node searches using the field name: Auction\nThis approach works because Airtable formulas expect field names, not IDs",
-      "id": "c41d244a-aca5-48e8-90a7-dc47bbafcdef"
-    },
-    {
-      "parameters": {
-        "operation": "search",
-        "resource": "record",
-        "application": "airtable",
-        "base": {
-          "__rl": true,
-          "value": "appWxxzsTHMY0MZHu",
-          "mode": "list",
-          "cachedResultName": "Tax Surplus",
-          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu"
-        },
-        "table": {
-          "__rl": true,
-          "value": "tblteK8SeHqZ8xQxV",
-          "mode": "list",
-          "cachedResultName": "Auctions",
-          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tblteK8SeHqZ8xQxV"
-        },
-        "filterByFormula": "{Auction} = '{{$json.auction_id}}'",
-        "options": {}
-      },
-      "name": "Test 3: Using Helper Method",
+      "id": "test_2_expression",
+      "name": "Test 2: Expression with Field Name",
       "type": "n8n-nodes-base.airtable",
       "typeVersion": 2,
       "position": [
@@ -147,8 +110,83 @@
           "name": "Airtable"
         }
       },
-      "notes": "This node uses the helper method createFilterFormula() to generate the formula\nThis is the recommended approach as it handles the field name lookup for you",
-      "id": "081e2e50-2855-459e-920c-d8d6292068bf"
+      "notes": "Using an expression with field name and dynamic value\nNote the \"=\" prefix to force expression mode"
+    },
+    {
+      "parameters": {
+        "resource": "record",
+        "operation": "search",
+        "application": "airtable",
+        "base": {
+          "__rl": true,
+          "value": "appAFwvoSRiOQc2pP",
+          "mode": "list",
+          "cachedResultName": "Tax Surplus",
+          "cachedResultUrl": "https://airtable.com/appAFwvoSRiOQc2pP"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblvlBDwuCE7CmThU",
+          "mode": "list",
+          "cachedResultName": "Auctions",
+          "cachedResultUrl": "https://airtable.com/appAFwvoSRiOQc2pP/tblvlBDwuCE7CmThU"
+        },
+        "filterByFormula": "={fldvL5TXKDTOmYiPB} = '{{$json.auction_id}}'",
+        "options": {}
+      },
+      "id": "test_3_field_id",
+      "name": "Test 3: Field ID (Doesn't Work)",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        850,
+        200
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "KqeYloYYVZeNChgU",
+          "name": "Airtable"
+        }
+      },
+      "notes": "Using field ID in formula - This DOES NOT work in Airtable\nNote the \"=\" prefix to force expression mode"
+    },
+    {
+      "parameters": {
+        "resource": "record",
+        "operation": "search",
+        "application": "airtable",
+        "base": {
+          "__rl": true,
+          "value": "appAFwvoSRiOQc2pP",
+          "mode": "list",
+          "cachedResultName": "Tax Surplus",
+          "cachedResultUrl": "https://airtable.com/appAFwvoSRiOQc2pP"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblvlBDwuCE7CmThU",
+          "mode": "list",
+          "cachedResultName": "Auctions",
+          "cachedResultUrl": "https://airtable.com/appAFwvoSRiOQc2pP/tblvlBDwuCE7CmThU"
+        },
+        "filterByFormula": "=SEARCH('{{$json.auction_id}}', {Auction})",
+        "options": {}
+      },
+      "id": "test_4_search",
+      "name": "Test 4: SEARCH Function",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        850,
+        400
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "KqeYloYYVZeNChgU",
+          "name": "Airtable"
+        }
+      },
+      "notes": "Using SEARCH function as an alternative\nNote the \"=\" prefix to force expression mode"
     }
   ],
   "connections": {
@@ -167,17 +205,22 @@
       "main": [
         [
           {
-            "node": "Test 1: Using Field ID",
+            "node": "Test 1: Fixed Value",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Test 2: Using Field Name",
+            "node": "Test 2: Expression with Field Name",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Test 3: Using Helper Method",
+            "node": "Test 3: Field ID (Doesn't Work)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Test 4: SEARCH Function",
             "type": "main",
             "index": 0
           }
@@ -189,12 +232,12 @@
     "executionOrder": "v1"
   },
   "active": false,
-  "versionId": "8dac74dc-9827-479d-b27c-3103f9505fe9",
-  "id": "Ot5jxtYqO8EEJ4J5",
+  "versionId": "3635abe9-6ae2-4dd2-881f-f45fe175dad6",
+  "id": "m4UyhOBLnV7y1Uyr",
   "staticData": null,
   "meta": null,
   "pinData": null,
-  "createdAt": "2025-03-20T23:26:41.882Z",
-  "updatedAt": "2025-03-20T23:26:41.882Z",
+  "createdAt": "2025-03-20T23:46:46.137Z",
+  "updatedAt": "2025-03-20T23:46:46.137Z",
   "triggerCount": 0
 }

@@ -1,47 +1,40 @@
 /**
  * This script helps debug different Airtable filter formula formats
- * to find the correct one that works with n8n Airtable nodes
+ * It includes several test cases with different filter formats to determine
+ * which one works correctly with the Airtable API through n8n
  */
 
 const fs = require('fs');
 const path = require('path');
 const WorkflowManager = require('./workflow-manager');
 
-// Reference the Airtable IDs
-const AIRTABLE = {
-	BASE_ID: 'appWxxzsTHMY0MZHu',
-	TABLES: {
-		AUCTIONS: 'tblteK8SeHqZ8xQxV',
-	},
-	FIELD_IDS: {
-		AUCTION: {
-			PRIMARY_FIELD: 'fld7zoOS3uQg4tiyh',
-		},
-	},
-};
+// Constants for Airtable IDs
+const BASE_ID = 'appAFwvoSRiOQc2pP';
+const AUCTIONS_TABLE_ID = 'tblvlBDwuCE7CmThU';
+const AUCTION_PRIMARY_FIELD_ID = 'fldvL5TXKDTOmYiPB'; // Field ID for Auction field
+
+// Initialize workflow manager
+const workflowManager = new WorkflowManager(
+	'https://127.0.0.1:5678',
+	'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzY2E5MjMwZi1hMDVkLTQ4NjQtOGI5ZS03OWU5NDI3YWUzN2IiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzQyNDIxNjk5fQ.tfUSCT54tNBRfHhQnse-uYHhO7qaGx25JAaUD_22sRU',
+);
 
 async function testFilterFormats() {
-	console.log('Testing different filter formula formats for Airtable nodes...');
+	try {
+		console.log('Testing different Airtable filter formats...');
 
-	// Initialize workflow manager with proper parameters
-	const workflowManager = new WorkflowManager(
-		'https://127.0.0.1:5678',
-		'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzY2E5MjMwZi1hMDVkLTQ4NjQtOGI5ZS03OWU5NDI3YWUzN2IiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzQyNDIxNjk5fQ.tfUSCT54tNBRfHhQnse-uYHhO7qaGx25JAaUD_22sRU',
-	);
-
-	// Create a test workflow with multiple Airtable nodes testing different filter formats
-	const testWorkflow = {
-		name: 'Airtable Filter Formula Test',
-		nodes: [
-			// Manual trigger node
+		// Define test nodes
+		const testNodes = [
+			// Manual Trigger
 			{
 				parameters: {},
+				id: 'manual_trigger',
 				name: 'Manual Trigger',
 				type: 'n8n-nodes-base.manualTrigger',
 				typeVersion: 1,
 				position: [250, 300],
 			},
-			// Set sample auction ID
+			// Set Sample Auction ID
 			{
 				parameters: {
 					mode: 'manual',
@@ -57,33 +50,37 @@ async function testFilterFormats() {
 						],
 					},
 				},
+				id: 'set_sample_id',
 				name: 'Set Sample Auction ID',
 				type: 'n8n-nodes-base.set',
 				typeVersion: 3.4,
 				position: [450, 300],
 			},
-			// Test 1: Format with string literals
+			// Test 1: Fixed value - NOT using expression mode
 			{
 				parameters: {
+					resource: 'record',
 					operation: 'search',
+					application: 'airtable',
 					base: {
 						__rl: true,
-						value: AIRTABLE.BASE_ID,
+						value: BASE_ID,
 						mode: 'list',
 						cachedResultName: 'Tax Surplus',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE.BASE_ID}`,
+						cachedResultUrl: `https://airtable.com/${BASE_ID}`,
 					},
 					table: {
 						__rl: true,
-						value: AIRTABLE.TABLES.AUCTIONS,
+						value: AUCTIONS_TABLE_ID,
 						mode: 'list',
 						cachedResultName: 'Auctions',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE.BASE_ID}/${AIRTABLE.TABLES.AUCTIONS}`,
+						cachedResultUrl: `https://airtable.com/${BASE_ID}/${AUCTIONS_TABLE_ID}`,
 					},
-					filterByFormula: "{fld7zoOS3uQg4tiyh} = '24-10-onondaga-ny'",
+					filterByFormula: `{Auction} = '24-10-onondaga-ny'`,
 					options: {},
 				},
-				name: 'Test 1: Static Value',
+				id: 'test_1_fixed',
+				name: 'Test 1: Fixed Value',
 				type: 'n8n-nodes-base.airtable',
 				typeVersion: 2,
 				position: [650, 200],
@@ -93,61 +90,33 @@ async function testFilterFormats() {
 						name: 'Airtable',
 					},
 				},
+				notes: 'Using a fixed value directly - NOT using expression mode',
 			},
-			// Test 2: Format with expression
+			// Test 2: Expression mode with field name - Uses a dynamic value
 			{
 				parameters: {
+					resource: 'record',
 					operation: 'search',
+					application: 'airtable',
 					base: {
 						__rl: true,
-						value: AIRTABLE.BASE_ID,
+						value: BASE_ID,
 						mode: 'list',
 						cachedResultName: 'Tax Surplus',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE.BASE_ID}`,
+						cachedResultUrl: `https://airtable.com/${BASE_ID}`,
 					},
 					table: {
 						__rl: true,
-						value: AIRTABLE.TABLES.AUCTIONS,
+						value: AUCTIONS_TABLE_ID,
 						mode: 'list',
 						cachedResultName: 'Auctions',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE.BASE_ID}/${AIRTABLE.TABLES.AUCTIONS}`,
+						cachedResultUrl: `https://airtable.com/${BASE_ID}/${AUCTIONS_TABLE_ID}`,
 					},
-					filterByFormula: "{fld7zoOS3uQg4tiyh} = '{{$json.auction_id}}'",
+					filterByFormula: `={Auction} = '{{$json.auction_id}}'`,
 					options: {},
 				},
-				name: 'Test 2: Expression',
-				type: 'n8n-nodes-base.airtable',
-				typeVersion: 2,
-				position: [650, 300],
-				credentials: {
-					airtableTokenApi: {
-						id: 'Airtable',
-						name: 'Airtable',
-					},
-				},
-			},
-			// Test 3: Format with quoted expression
-			{
-				parameters: {
-					operation: 'search',
-					base: {
-						__rl: true,
-						value: AIRTABLE.BASE_ID,
-						mode: 'list',
-						cachedResultName: 'Tax Surplus',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE.BASE_ID}`,
-					},
-					table: {
-						__rl: true,
-						value: AIRTABLE.TABLES.AUCTIONS,
-						mode: 'list',
-						cachedResultName: 'Auctions',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE.BASE_ID}/${AIRTABLE.TABLES.AUCTIONS}`,
-					},
-					filterByFormula: `\"{fld7zoOS3uQg4tiyh} = '{{$json.auction_id}}'\"`,
-					options: {},
-				},
-				name: 'Test 3: Quoted Formula',
+				id: 'test_2_expression',
+				name: 'Test 2: Expression with Field Name',
 				type: 'n8n-nodes-base.airtable',
 				typeVersion: 2,
 				position: [650, 400],
@@ -157,73 +126,87 @@ async function testFilterFormats() {
 						name: 'Airtable',
 					},
 				},
+				notes:
+					'Using an expression with field name and dynamic value\nNote the "=" prefix to force expression mode',
 			},
-			// Test 4: Format using =SEARCH() formula
+			// Test 3: Field ID expression - Common approach but field ID doesn't work in formula
 			{
 				parameters: {
+					resource: 'record',
 					operation: 'search',
+					application: 'airtable',
 					base: {
 						__rl: true,
-						value: AIRTABLE.BASE_ID,
+						value: BASE_ID,
 						mode: 'list',
 						cachedResultName: 'Tax Surplus',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE.BASE_ID}`,
+						cachedResultUrl: `https://airtable.com/${BASE_ID}`,
 					},
 					table: {
 						__rl: true,
-						value: AIRTABLE.TABLES.AUCTIONS,
+						value: AUCTIONS_TABLE_ID,
 						mode: 'list',
 						cachedResultName: 'Auctions',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE.BASE_ID}/${AIRTABLE.TABLES.AUCTIONS}`,
+						cachedResultUrl: `https://airtable.com/${BASE_ID}/${AUCTIONS_TABLE_ID}`,
 					},
-					filterByFormula: `SEARCH("{{$json.auction_id}}", {fld7zoOS3uQg4tiyh})`,
+					filterByFormula: `={${AUCTION_PRIMARY_FIELD_ID}} = '{{$json.auction_id}}'`,
 					options: {},
 				},
+				id: 'test_3_field_id',
+				name: "Test 3: Field ID (Doesn't Work)",
+				type: 'n8n-nodes-base.airtable',
+				typeVersion: 2,
+				position: [850, 200],
+				credentials: {
+					airtableTokenApi: {
+						id: 'Airtable',
+						name: 'Airtable',
+					},
+				},
+				notes:
+					'Using field ID in formula - This DOES NOT work in Airtable\nNote the "=" prefix to force expression mode',
+			},
+			// Test 4: SEARCH function - Alternative approach
+			{
+				parameters: {
+					resource: 'record',
+					operation: 'search',
+					application: 'airtable',
+					base: {
+						__rl: true,
+						value: BASE_ID,
+						mode: 'list',
+						cachedResultName: 'Tax Surplus',
+						cachedResultUrl: `https://airtable.com/${BASE_ID}`,
+					},
+					table: {
+						__rl: true,
+						value: AUCTIONS_TABLE_ID,
+						mode: 'list',
+						cachedResultName: 'Auctions',
+						cachedResultUrl: `https://airtable.com/${BASE_ID}/${AUCTIONS_TABLE_ID}`,
+					},
+					filterByFormula: `=SEARCH('{{$json.auction_id}}', {Auction})`,
+					options: {},
+				},
+				id: 'test_4_search',
 				name: 'Test 4: SEARCH Function',
 				type: 'n8n-nodes-base.airtable',
 				typeVersion: 2,
-				position: [650, 500],
+				position: [850, 400],
 				credentials: {
 					airtableTokenApi: {
 						id: 'Airtable',
 						name: 'Airtable',
 					},
 				},
+				notes:
+					'Using SEARCH function as an alternative\nNote the "=" prefix to force expression mode',
 			},
-			// Test 5: Format with direct n8n formula
-			{
-				parameters: {
-					operation: 'search',
-					base: {
-						__rl: true,
-						value: AIRTABLE.BASE_ID,
-						mode: 'list',
-						cachedResultName: 'Tax Surplus',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE.BASE_ID}`,
-					},
-					table: {
-						__rl: true,
-						value: AIRTABLE.TABLES.AUCTIONS,
-						mode: 'list',
-						cachedResultName: 'Auctions',
-						cachedResultUrl: `https://airtable.com/${AIRTABLE.BASE_ID}/${AIRTABLE.TABLES.AUCTIONS}`,
-					},
-					filterByFormula: `="FIND('24-10-onondaga-ny', {fld7zoOS3uQg4tiyh})"`,
-					options: {},
-				},
-				name: 'Test 5: Direct Formula',
-				type: 'n8n-nodes-base.airtable',
-				typeVersion: 2,
-				position: [650, 600],
-				credentials: {
-					airtableTokenApi: {
-						id: 'Airtable',
-						name: 'Airtable',
-					},
-				},
-			},
-		],
-		connections: {
+		];
+
+		// Define connections
+		const connections = {
 			'Manual Trigger': {
 				main: [
 					[
@@ -239,17 +222,17 @@ async function testFilterFormats() {
 				main: [
 					[
 						{
-							node: 'Test 1: Static Value',
+							node: 'Test 1: Fixed Value',
 							type: 'main',
 							index: 0,
 						},
 						{
-							node: 'Test 2: Expression',
+							node: 'Test 2: Expression with Field Name',
 							type: 'main',
 							index: 0,
 						},
 						{
-							node: 'Test 3: Quoted Formula',
+							node: "Test 3: Field ID (Doesn't Work)",
 							type: 'main',
 							index: 0,
 						},
@@ -258,42 +241,37 @@ async function testFilterFormats() {
 							type: 'main',
 							index: 0,
 						},
-						{
-							node: 'Test 5: Direct Formula',
-							type: 'main',
-							index: 0,
-						},
 					],
 				],
 			},
-		},
-	};
+		};
 
-	try {
 		// Create the test workflow
 		console.log('Creating test workflow...');
-		const createdWorkflow = await workflowManager.createWorkflow(
-			testWorkflow.name,
-			testWorkflow.nodes,
-			testWorkflow.connections,
+		const testWorkflow = await workflowManager.createWorkflow(
+			'Airtable Filter Formula Test',
+			testNodes,
+			connections,
 		);
 
-		console.log(`Test workflow created with ID: ${createdWorkflow.id}`);
-		console.log('Please open this workflow in the n8n UI and test which filter format works best.');
-		console.log('Workflow URL: https://127.0.0.1:5678/workflow/' + createdWorkflow.id);
+		console.log(`Test workflow created with ID: ${testWorkflow.id}`);
 
-		// Save the workflow details to file
-		const filePath = path.join(__dirname, 'airtable-filter-test-workflow.json');
-		fs.writeFileSync(filePath, JSON.stringify(createdWorkflow, null, 2));
-		console.log(`Test workflow saved to: ${filePath}`);
+		// Save the test workflow for reference
+		const testWorkflowPath = path.join(__dirname, 'airtable-field-name-test-workflow.json');
+		fs.writeFileSync(testWorkflowPath, JSON.stringify(testWorkflow, null, 2));
+		console.log(`Test workflow saved to ${testWorkflowPath}`);
 
-		return createdWorkflow.id;
+		// Execute the test workflow to check which formats work
+		console.log('\nExecuting test workflow...');
+		const execution = await workflowManager.executeWorkflow(testWorkflow.id);
+		console.log(`Execution started with ID: ${execution.id}`);
+
+		console.log('\nTest complete! Please check the results in the n8n interface.');
+		console.log(`https://127.0.0.1:5678/workflow/${testWorkflow.id}`);
 	} catch (error) {
-		console.error('Error creating test workflow:', error);
+		console.error('Error testing filter formats:', error);
 	}
 }
 
-// Execute the function
-testFilterFormats().catch((error) => {
-	console.error('Error running the script:', error);
-});
+// Run the tests
+testFilterFormats();
