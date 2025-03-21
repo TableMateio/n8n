@@ -2,24 +2,31 @@
 	"name": "ROUTER: Auctions",
 	"nodes": [
 		{
-			"parameters": {},
-			"id": "manual_trigger",
-			"name": "Manual Trigger",
-			"type": "n8n-nodes-base.manualTrigger",
+			"parameters": {
+				"application": "appWxxzsTHMY0MZHu",
+				"table": "tblteK8SeHqZ8xQxV",
+				"operation": "update",
+				"typeOperation": "recordUpdated"
+			},
+			"id": "airtable_trigger",
+			"name": "Airtable Trigger",
+			"type": "n8n-nodes-base.airtableTrigger",
+			"typeVersion": 1,
 			"position": [480, 300]
 		},
 		{
 			"parameters": {
-				"code": "// This is the entry point for auction-related processes\n// In a complete implementation, this would branch into multiple paths\n// based on auction events (created, updated, bidding, closing, etc.)\n\nconst timestamp = new Date().toISOString();\n\nreturn {\n  json: {\n    success: true,\n    message: `Auction router executed successfully at ${timestamp}`,\n    router: 'auctions',\n    // In a real implementation, additional auction data would be processed here\n    action: 'initialized'\n  }\n}\n"
+				"functionCode": "// Determine if the 'Surplus List' field was updated\nconst record = $input.item.json;\nconst fields = record.fields || {};\n\n// Check if Surplus List field exists and has content\nif (fields[\"Surplus List\"] && fields[\"Surplus List\"].length > 0) {\n  const timestamp = new Date().toISOString();\n  \n  return {\n    json: {\n      recordId: record.id,\n      auctionName: fields[\"Auction Name\"] || \"Unknown Auction\",\n      county: fields[\"County\"] || \"Unknown County\",\n      surplusList: fields[\"Surplus List\"],\n      message: `Surplus List updated for auction at ${timestamp}`,\n      action: 'surplus_list_updated'\n    }\n  };\n} else {\n  // If no Surplus List, skip processing\n  return [];\n}\n"
 			},
 			"id": "code_node",
-			"name": "Initial Execution",
-			"type": "n8n-nodes-base.code",
+			"name": "Check Surplus List Field",
+			"type": "n8n-nodes-base.function",
+			"typeVersion": 1,
 			"position": [700, 300]
 		},
 		{
 			"parameters": {
-				"description": "End of the workflow. In a complete implementation, this would be replaced with various downstream processes."
+				"description": "End of the workflow. In a complete implementation, this would be replaced with various downstream processes for processing the Surplus List."
 			},
 			"id": "no_op",
 			"name": "Workflow Complete",
@@ -29,7 +36,7 @@
 	],
 	"pinData": {},
 	"connections": {
-		"manual_trigger": {
+		"airtable_trigger": {
 			"main": [
 				[
 					{
@@ -51,18 +58,18 @@
 				]
 			]
 		},
-		"Manual Trigger": {
+		"Airtable Trigger": {
 			"main": [
 				[
 					{
-						"node": "Initial Execution",
+						"node": "Check Surplus List Field",
 						"type": "main",
 						"index": 0
 					}
 				]
 			]
 		},
-		"Initial Execution": {
+		"Check Surplus List Field": {
 			"main": [
 				[
 					{
