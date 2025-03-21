@@ -5,7 +5,7 @@ This directory contains reusable workflow templates organized by abstraction lev
 ## Directory Structure
 
 ```
-/workflows
+/workflow-templates
   /triggers         # Entry points/routers organized by source type
     /airtable       # Airtable record change triggers
     /schedule       # Time-based triggers

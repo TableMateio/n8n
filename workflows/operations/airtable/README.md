@@ -17,7 +17,7 @@ These operations abstract the complexity of Airtable interactions and provide a 
 ## Directory Structure
 
 ```
-workflows/operations/airtable/
+workflow-templates/operations/airtable/
 ├── README.md                      # This file
 ├── get-record.js                  # Operation to retrieve a single record
 ├── search-records.js              # Operation to search for records with proper field handling

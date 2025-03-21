@@ -1,0 +1,154 @@
+{
+  "createdAt": "2025-03-20T16:07:14.637Z",
+  "updatedAt": "2025-03-20T16:07:14.637Z",
+  "id": "g2Am3Q41Frh1aJwm",
+  "name": "Reusable Process Workflow",
+  "active": false,
+  "nodes": [
+    {
+      "id": "cccccccc-0000-0000-0000-000000000001",
+      "name": "When Called",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "cccccccc-0000-0000-0000-000000000002",
+      "name": "Process Input",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ],
+      "parameters": {
+        "functionCode": "const inputData = $input.item.json;\n\n// Add a timestamp and processing flag\nreturn {\n  json: {\n    ...inputData,\n    processed: true,\n    processedAt: new Date().toISOString(),\n    message: \"Data processed by callee workflow\"\n  }\n}"
+      }
+    },
+    {
+      "id": "cccccccc-0000-0000-0000-000000000003",
+      "name": "Format Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "success"
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "cccccccc-0000-0000-0000-000000000001": {
+      "main": [
+        [
+          {
+            "node": "cccccccc-0000-0000-0000-000000000002",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cccccccc-0000-0000-0000-000000000002": {
+      "main": [
+        [
+          {
+            "node": "cccccccc-0000-0000-0000-000000000003",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Called": {
+      "main": [
+        [
+          {
+            "node": "Process Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Input": {
+      "main": [
+        [
+          {
+            "node": "Format Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "82053c41-2cb4-4ae4-841f-4459f45ff974",
+  "triggerCount": 0,
+  "shared": [
+    {
+      "createdAt": "2025-03-20T16:07:14.638Z",
+      "updatedAt": "2025-03-20T16:07:14.638Z",
+      "role": "workflow:owner",
+      "workflowId": "g2Am3Q41Frh1aJwm",
+      "projectId": "QlUhVSNSLPtKikKo",
+      "project": {
+        "createdAt": "2025-03-19T16:00:41.778Z",
+        "updatedAt": "2025-03-19T19:32:35.720Z",
+        "id": "QlUhVSNSLPtKikKo",
+        "name": "Scott Bergman <scott.a.bergman@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "projectRelations": [
+          {
+            "createdAt": "2025-03-19T16:00:41.778Z",
+            "updatedAt": "2025-03-19T16:00:41.778Z",
+            "role": "project:personalOwner",
+            "userId": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+            "projectId": "QlUhVSNSLPtKikKo",
+            "user": {
+              "createdAt": "2025-03-19T16:00:41.676Z",
+              "updatedAt": "2025-03-20T16:07:34.434Z",
+              "id": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+              "email": "scott.a.bergman@gmail.com",
+              "firstName": "Scott",
+              "lastName": "Bergman",
+              "personalizationAnswers": null,
+              "settings": {
+                "userActivated": true,
+                "firstSuccessfulWorkflowId": "g2Am3Q41Frh1aJwm",
+                "userActivatedAt": 1742486854413
+              },
+              "role": "global:owner",
+              "disabled": false,
+              "mfaEnabled": false,
+              "isPending": false,
+              "isOwner": true
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "tags": []
+}

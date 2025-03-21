@@ -6,10 +6,10 @@ This document details which files from the `tests/mcp/airtable` directory have b
 
 | Original File                         | Status    | Migration Target                                         | Notes                                                        |
 |--------------------------------------|-----------|----------------------------------------------------------|--------------------------------------------------------------|
-| `test-airtable-credentials.js`       | ✅ Migrated | `workflows/operations/airtable/test-credentials.js` | Complete functionality has been migrated with improvements    |
-| `debug-airtable-field-names.js`      | ✅ Migrated | `workflows/operations/airtable/search-records.js` | Improved with proper field name handling in search operations |
-| `debug-airtable-linked-fields.js`    | ✅ Migrated | `workflows/operations/airtable/get-linked-record.js` | Complete functionality with support for single/multiple records |
-| `airtable-config-workflow.js`        | ✅ Migrated | `workflows/operations/airtable/get-config-values.js` | Functionality has been abstracted to a reusable operation     |
+| `test-airtable-credentials.js`       | ✅ Migrated | `workflow-templates/operations/airtable/test-credentials.js` | Complete functionality has been migrated with improvements    |
+| `debug-airtable-field-names.js`      | ✅ Migrated | `workflow-templates/operations/airtable/search-records.js` | Improved with proper field name handling in search operations |
+| `debug-airtable-linked-fields.js`    | ✅ Migrated | `workflow-templates/operations/airtable/get-linked-record.js` | Complete functionality with support for single/multiple records |
+| `airtable-config-workflow.js`        | ✅ Migrated | `workflow-templates/operations/airtable/get-config-values.js` | Functionality has been abstracted to a reusable operation     |
 | `check-airtable-workflow.js`         | ✅ Migrated | Covered by multiple operations                            | Functionality distributed across operations                   |
 | `fix-airtable-filtering.js`          | ✅ Migrated | Covered by `search-records.js` and `get-linked-record.js`   | Core logic for proper filtering has been incorporated         |
 | `fix-airtable-workflow-trigger.js`   | ✅ Migrated | Covered by router patterns                                | Trigger handling is now part of router architecture           |
@@ -24,7 +24,7 @@ This document details which files from the `tests/mcp/airtable` directory have b
 The migration process involved:
 
 1. Analyzing each test file to understand its purpose and functionality
-2. Creating standardized reusable operations in `workflows/operations/airtable`
+2. Creating standardized reusable operations in `workflow-templates/operations/airtable`
 3. Improving error handling and input validation
 4. Making the operations more configurable and reusable
 5. Ensuring proper field name vs field ID handling

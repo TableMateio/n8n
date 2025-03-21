@@ -1,0 +1,274 @@
+{
+  "createdAt": "2025-03-20T19:10:20.484Z",
+  "updatedAt": "2025-03-21T20:31:41.000Z",
+  "id": "TtUAMmNqNaedRCyu",
+  "name": "Binary Data Handling Example",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "alt-start-node",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "filePath": "/Users/scottbergman/Dropbox/TaxSurplus/Technology/n8n/tests/mcp/test-data.json"
+      },
+      "id": "alt-read-file-node",
+      "name": "Read Test JSON File",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "\n// Access binary data using Buffer\nconst binaryData = $input.item.binary.data;\nlet configStr;\n\n// Try different methods of converting binary to string\ntry {\n  // Method 1: Direct toString\n  configStr = binaryData.toString();\n  const config = JSON.parse(configStr);\n\n  return {\n    json: {\n      ...config,\n      _method: \"Buffer direct toString\"\n    }\n  };\n} catch (error) {\n  // If direct toString fails, try with encoding\n  try {\n    configStr = binaryData.toString('utf8');\n    const config = JSON.parse(configStr);\n\n    return {\n      json: {\n        ...config,\n        _method: \"Buffer toString with utf8 encoding\"\n      }\n    };\n  } catch (error) {\n    return {\n      json: {\n        error: error.message,\n        _method: \"Both methods failed\"\n      }\n    };\n  }\n}"
+      },
+      "id": "alt-method-a",
+      "name": "Method A: Using Buffer",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        650,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "binaryKeys",
+              "value": "={{ Object.keys($json) }}"
+            },
+            {
+              "name": "binaryDataKeys",
+              "value": "={{ $json.data ? Object.keys($json.data) : [] }}"
+            },
+            {
+              "name": "itemKeys",
+              "value": "={{ Object.keys($item) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "alt-method-b",
+      "name": "Method B: Using $json",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        650,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "dataString",
+              "value": "={{ $items(0).$binary.data ? $items(0).$binary.data.toString() : \"\" }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "alt-method-c",
+      "name": "Method C: Using $items",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        650,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "alt-method-d1",
+      "name": "Method D1: Move Binary Data",
+      "type": "n8n-nodes-base.moveBinaryData",
+      "typeVersion": 1,
+      "position": [
+        650,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "\n// At this point, binary data should be converted to JSON\nconst data = $input.item.json;\n\nreturn {\n  json: {\n    ...data,\n    _method: \"MoveBinaryData + Function\"\n  }\n};"
+      },
+      "id": "alt-method-d2",
+      "name": "Method D2: Parse Moved Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        850,
+        800
+      ]
+    }
+  ],
+  "connections": {
+    "alt-start-node": {
+      "main": [
+        [
+          {
+            "node": "alt-read-file-node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "alt-read-file-node": {
+      "main": [
+        [
+          {
+            "node": "alt-method-a",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "alt-method-b",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "alt-method-c",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "alt-method-d1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "alt-method-d1": {
+      "main": [
+        [
+          {
+            "node": "alt-method-d2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Read Test JSON File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Test JSON File": {
+      "main": [
+        [
+          {
+            "node": "Method A: Using Buffer",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Method B: Using $json",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Method C: Using $items",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Method D1: Move Binary Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Method D1: Move Binary Data": {
+      "main": [
+        [
+          {
+            "node": "Method D2: Parse Moved Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "eeb5155a-438b-4f7f-be1b-94d47438c853",
+  "triggerCount": 0,
+  "shared": [
+    {
+      "createdAt": "2025-03-20T19:10:20.485Z",
+      "updatedAt": "2025-03-20T19:10:20.485Z",
+      "role": "workflow:owner",
+      "workflowId": "TtUAMmNqNaedRCyu",
+      "projectId": "QlUhVSNSLPtKikKo",
+      "project": {
+        "createdAt": "2025-03-19T16:00:41.778Z",
+        "updatedAt": "2025-03-19T19:32:35.720Z",
+        "id": "QlUhVSNSLPtKikKo",
+        "name": "Scott Bergman <scott.a.bergman@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "projectRelations": [
+          {
+            "createdAt": "2025-03-19T16:00:41.778Z",
+            "updatedAt": "2025-03-19T16:00:41.778Z",
+            "role": "project:personalOwner",
+            "userId": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+            "projectId": "QlUhVSNSLPtKikKo",
+            "user": {
+              "createdAt": "2025-03-19T16:00:41.676Z",
+              "updatedAt": "2025-03-20T16:07:34.434Z",
+              "id": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+              "email": "scott.a.bergman@gmail.com",
+              "firstName": "Scott",
+              "lastName": "Bergman",
+              "personalizationAnswers": null,
+              "settings": {
+                "userActivated": true,
+                "firstSuccessfulWorkflowId": "g2Am3Q41Frh1aJwm",
+                "userActivatedAt": 1742486854413
+              },
+              "role": "global:owner",
+              "disabled": false,
+              "mfaEnabled": false,
+              "isPending": false,
+              "isOwner": true
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "tags": []
+}
