@@ -1,0 +1,16 @@
+{
+  "apiEndpoint": "https://api.example.com/v2",
+  "method": "POST",
+  "headers": {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer test-token"
+  },
+  "processingRules": {
+    "uppercase": true,
+    "validateFields": [
+      "name",
+      "email"
+    ],
+    "maxRetries": 3
+  }
+}

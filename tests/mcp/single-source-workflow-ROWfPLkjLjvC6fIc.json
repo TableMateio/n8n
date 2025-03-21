@@ -1,0 +1,425 @@
+{
+  "name": "5 Methods, 1 Source",
+  "nodes": [
+    {
+      "id": "main-trigger",
+      "name": "Start Here",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        300,
+        400
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "read-config",
+      "name": "Read Configuration",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        500,
+        400
+      ],
+      "parameters": {
+        "filePath": "/Users/scottbergman/Dropbox/TaxSurplus/Technology/n8n/tests/mcp/workflow-config.json",
+        "options": {
+          "encoding": "utf8"
+        }
+      }
+    },
+    {
+      "id": "debug-node",
+      "name": "Method 1: Debug Output",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        700,
+        220
+      ],
+      "parameters": {
+        "functionCode": "const newItem = {...$input.item};\n\n// Add debug info\nnewItem.json = {\n  info: \"Debug Node\",\n  binaryKeys: $input.item.binary ? Object.keys($input.item.binary) : \"No binary data\",\n  binaryContent: $input.item.binary && $input.item.binary.data ? \n    $input.item.binary.data.toString(\"utf8\").substring(0, 100) + \"...\" : \"No content\"\n};\n\nreturn newItem;"
+      }
+    },
+    {
+      "id": "function-node",
+      "name": "Method 2: Function Node",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        700,
+        340
+      ],
+      "parameters": {
+        "functionCode": "// Get the binary data and convert to JSON\nconst binaryData = $input.item.binary.data;\nconst configStr = binaryData.toString(\"utf8\");\nconst config = JSON.parse(configStr);\n\n// Return the config and add source info\nreturn {\n  json: {\n    ...config,\n    _source: \"Function Node\"\n  }\n};"
+      }
+    },
+    {
+      "id": "http-request-2",
+      "name": "Method 2: API Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        900,
+        340
+      ],
+      "parameters": {
+        "url": "={{ $json.apiEndpoint }}",
+        "method": "={{ $json.requestMethod }}",
+        "options": {
+          "timeout": "={{ $json.requestTimeout }}"
+        }
+      }
+    },
+    {
+      "id": "code-node",
+      "name": "Method 3: Code Node",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        700,
+        460
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Process all items\nfor (const item of $input.all()) {\n  if (item.binary && item.binary.data) {\n    // Convert binary to string and parse as JSON\n    const configStr = Buffer.from(item.binary.data, \"base64\").toString(\"utf8\");\n    try {\n      const config = JSON.parse(configStr);\n      // Set the result as JSON\n      item.json = {\n        ...config,\n        _source: \"Code Node\"\n      };\n    } catch (error) {\n      item.json = { error: error.message, preview: configStr.substring(0, 100) };\n    }\n  } else {\n    item.json = { error: \"No binary data found\" };\n  }\n}\n\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "http-request-3",
+      "name": "Method 3: API Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        900,
+        460
+      ],
+      "parameters": {
+        "url": "={{ $json.apiEndpoint }}",
+        "method": "={{ $json.requestMethod }}",
+        "options": {
+          "timeout": "={{ $json.requestTimeout }}"
+        }
+      }
+    },
+    {
+      "id": "set-node",
+      "name": "Method 4: Set Node",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        700,
+        580
+      ],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "configString",
+              "value": "={{ $binary.data.toString() }}"
+            },
+            {
+              "name": "apiEndpoint",
+              "value": "={{ JSON.parse($binary.data.toString()).apiEndpoint }}"
+            },
+            {
+              "name": "requestMethod",
+              "value": "={{ JSON.parse($binary.data.toString()).requestMethod }}"
+            },
+            {
+              "name": "requestTimeout",
+              "value": "={{ JSON.parse($binary.data.toString()).requestTimeout }}"
+            },
+            {
+              "name": "_source",
+              "value": "Set Node"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "http-request-4",
+      "name": "Method 4: API Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        900,
+        580
+      ],
+      "parameters": {
+        "url": "={{ $json.apiEndpoint }}",
+        "method": "={{ $json.requestMethod }}",
+        "options": {
+          "timeout": "={{ $json.requestTimeout }}"
+        }
+      }
+    },
+    {
+      "id": "binary-data-node",
+      "name": "Method 5: Move Binary Data",
+      "type": "n8n-nodes-base.moveBinaryData",
+      "typeVersion": 1,
+      "position": [
+        700,
+        700
+      ],
+      "parameters": {
+        "mode": "binaryToJson",
+        "sourceKey": "data",
+        "options": {
+          "jsonParse": true
+        }
+      }
+    },
+    {
+      "id": "set-source-5",
+      "name": "Method 5: Set Source",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        900,
+        700
+      ],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "_source",
+              "value": "Move Binary Data Node"
+            }
+          ]
+        },
+        "options": {
+          "dotNotation": true
+        }
+      }
+    },
+    {
+      "id": "http-request-5",
+      "name": "Method 5: API Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        700
+      ],
+      "parameters": {
+        "url": "={{ $json.apiEndpoint }}",
+        "method": "={{ $json.requestMethod }}",
+        "options": {
+          "timeout": "={{ $json.requestTimeout }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "main-trigger": {
+      "main": [
+        [
+          {
+            "node": "read-config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "read-config": {
+      "main": [
+        [
+          {
+            "node": "debug-node",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "function-node",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "code-node",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "set-node",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "binary-data-node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "function-node": {
+      "main": [
+        [
+          {
+            "node": "http-request-2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "code-node": {
+      "main": [
+        [
+          {
+            "node": "http-request-3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set-node": {
+      "main": [
+        [
+          {
+            "node": "http-request-4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "binary-data-node": {
+      "main": [
+        [
+          {
+            "node": "set-source-5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set-source-5": {
+      "main": [
+        [
+          {
+            "node": "http-request-5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Here": {
+      "main": [
+        [
+          {
+            "node": "Read Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Configuration": {
+      "main": [
+        [
+          {
+            "node": "Method 1: Debug Output",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Method 2: Function Node",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Method 3: Code Node",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Method 4: Set Node",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Method 5: Move Binary Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Method 2: Function Node": {
+      "main": [
+        [
+          {
+            "node": "Method 2: API Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Method 3: Code Node": {
+      "main": [
+        [
+          {
+            "node": "Method 3: API Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Method 4: Set Node": {
+      "main": [
+        [
+          {
+            "node": "Method 4: API Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Method 5: Move Binary Data": {
+      "main": [
+        [
+          {
+            "node": "Method 5: Set Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Method 5: Set Source": {
+      "main": [
+        [
+          {
+            "node": "Method 5: API Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "versionId": "ab2b6260-800d-4fbb-bba2-0da2bb625a44",
+  "id": "ROWfPLkjLjvC6fIc",
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "createdAt": "2025-03-20T18:58:59.285Z",
+  "updatedAt": "2025-03-20T18:58:59.285Z",
+  "triggerCount": 0
+}

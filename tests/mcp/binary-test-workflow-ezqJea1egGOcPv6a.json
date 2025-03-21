@@ -1,0 +1,317 @@
+{
+  "name": "Binary Data Handling Test",
+  "nodes": [
+    {
+      "id": "start-node",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "read-file-node",
+      "name": "Read Test JSON File",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ],
+      "parameters": {
+        "filePath": "/Users/scottbergman/Dropbox/TaxSurplus/Technology/n8n/tests/mcp/test-data.json"
+      }
+    },
+    {
+      "id": "debug-raw-node",
+      "name": "1. Debug Raw Binary Data",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        650,
+        100
+      ],
+      "parameters": {},
+      "notes": "Examine the binary data structure directly in the output"
+    },
+    {
+      "id": "function-node",
+      "name": "2. Function Node Method",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ],
+      "parameters": {
+        "functionCode": "\n// Access binary data and convert to string\nconst binaryData = $input.item.binary.data;\nconst configStr = binaryData.toString(\"utf8\");\n\n// Parse the JSON string\ntry {\n  const config = JSON.parse(configStr);\n\n  // Return the parsed data with a source identifier\n  return {\n    json: {\n      ...config,\n      _accessMethod: \"Function Node: $input.item.binary.data.toString()\"\n    }\n  };\n} catch (error) {\n  return {\n    json: {\n      error: error.message,\n      _accessMethod: \"Function Node: $input.item.binary.data.toString()\"\n    }\n  };\n}"
+      }
+    },
+    {
+      "id": "set-string-node",
+      "name": "3A. Set Node: Extract String",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        650,
+        500
+      ],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "configString",
+              "value": "={{ $input.item.binary.data.toString() }}"
+            },
+            {
+              "name": "_accessMethod",
+              "value": "Set Node: $input.item.binary.data.toString()"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "parse-json-node",
+      "name": "3B. Function Node: Parse String",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        850,
+        500
+      ],
+      "parameters": {
+        "functionCode": "\n// Get the string from previous node\nconst configStr = $input.item.json.configString;\n\n// Parse the JSON string\ntry {\n  const config = JSON.parse(configStr);\n\n  // Return the parsed data\n  return {\n    json: {\n      ...config,\n      _accessMethod: $input.item.json._accessMethod + \" + JSON.parse()\"\n    }\n  };\n} catch (error) {\n  return {\n    json: {\n      error: error.message,\n      _accessMethod: $input.item.json._accessMethod + \" + JSON.parse() (failed)\"\n    }\n  };\n}"
+      }
+    },
+    {
+      "id": "direct-set-node",
+      "name": "4. Set Node: Direct Parse (Often fails)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        650,
+        700
+      ],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "apiEndpoint",
+              "value": "={{ JSON.parse($input.item.binary.data.toString()).apiEndpoint }}"
+            },
+            {
+              "name": "_accessMethod",
+              "value": "Set Node: JSON.parse($input.item.binary.data.toString())"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "code-node",
+      "name": "5. Code Node Method",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        650,
+        900
+      ],
+      "parameters": {
+        "code": "\n// Process all items\nfor (const item of $input.all()) {\n  if (item.binary && item.binary.data) {\n    // Convert binary to string and parse as JSON\n    const configStr = item.binary.data.toString(\"utf8\");\n    try {\n      const config = JSON.parse(configStr);\n      // Set the result as JSON\n      item.json = {\n        ...config,\n        _accessMethod: \"Code Node: item.binary.data.toString()\"\n      };\n    } catch (error) {\n      item.json = {\n        error: error.message,\n        _accessMethod: \"Code Node: item.binary.data.toString() (failed)\"\n      };\n    }\n  }\n}\n\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "binary-shorthand-node",
+      "name": "6A. Set Node: $binary Shorthand",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        650,
+        1100
+      ],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "configString",
+              "value": "={{ $binary.data.toString() }}"
+            },
+            {
+              "name": "_accessMethod",
+              "value": "Set Node: $binary.data.toString()"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "parse-binary-shorthand-node",
+      "name": "6B. Function Node: Parse $binary String",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        850,
+        1100
+      ],
+      "parameters": {
+        "functionCode": "\n// Get the string from previous node\nconst configStr = $input.item.json.configString;\n\n// Parse the JSON string\ntry {\n  const config = JSON.parse(configStr);\n\n  // Return the parsed data\n  return {\n    json: {\n      ...config,\n      _accessMethod: $input.item.json._accessMethod + \" + JSON.parse()\"\n    }\n  };\n} catch (error) {\n  return {\n    json: {\n      error: error.message,\n      _accessMethod: $input.item.json._accessMethod + \" + JSON.parse() (failed)\"\n    }\n  };\n}"
+      }
+    }
+  ],
+  "connections": {
+    "start-node": {
+      "main": [
+        [
+          {
+            "node": "read-file-node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "read-file-node": {
+      "main": [
+        [
+          {
+            "node": "debug-raw-node",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "function-node",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "set-string-node",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "direct-set-node",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "code-node",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "binary-shorthand-node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set-string-node": {
+      "main": [
+        [
+          {
+            "node": "parse-json-node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "binary-shorthand-node": {
+      "main": [
+        [
+          {
+            "node": "parse-binary-shorthand-node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Test JSON File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Test JSON File": {
+      "main": [
+        [
+          {
+            "node": "1. Debug Raw Binary Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "2. Function Node Method",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "3A. Set Node: Extract String",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "4. Set Node: Direct Parse (Often fails)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "5. Code Node Method",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "6A. Set Node: $binary Shorthand",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3A. Set Node: Extract String": {
+      "main": [
+        [
+          {
+            "node": "3B. Function Node: Parse String",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6A. Set Node: $binary Shorthand": {
+      "main": [
+        [
+          {
+            "node": "6B. Function Node: Parse $binary String",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "versionId": "f834fc32-5a19-4039-9edf-b124b82ebfb8",
+  "id": "ezqJea1egGOcPv6a",
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "createdAt": "2025-03-20T19:06:19.211Z",
+  "updatedAt": "2025-03-20T19:06:19.211Z",
+  "triggerCount": 0
+}

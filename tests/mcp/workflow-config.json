@@ -10,9 +10,21 @@
 	"maxRetries": 3,
 	"statusField": "completed",
 	"statusValue": true,
-	"processingRules": {
-		"assignTo": "user1",
-		"priority": "high",
-		"notifyEmail": "admin@example.com"
+	"processingRules": [
+		{
+			"field": "title",
+			"operation": "uppercase"
+		},
+		{
+			"field": "userId",
+			"operation": "multiply",
+			"factor": 10
+		}
+	],
+	"notifications": {
+		"enabled": true,
+		"recipients": ["admin@example.com", "developer@example.com"],
+		"successMessage": "API request completed successfully",
+		"failureMessage": "API request failed, please check logs"
 	}
 }

@@ -1,0 +1,199 @@
+{
+  "name": "Disconnected Flows Example",
+  "nodes": [
+    {
+      "id": "11111111-0000-0000-0000-000000000001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "11111111-0000-0000-0000-000000000002",
+      "name": "Get Sample Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ],
+      "parameters": {
+        "url": "https://jsonplaceholder.typicode.com/users/1",
+        "options": {}
+      }
+    },
+    {
+      "id": "11111111-0000-0000-0000-000000000003",
+      "name": "Process Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ],
+      "parameters": {
+        "functionCode": "return {\n  json: {\n    processedData: $input.item.json,\n    processedAt: new Date().toISOString()\n  }\n}"
+      }
+    },
+    {
+      "id": "22222222-0000-0000-0000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        500
+      ],
+      "parameters": {
+        "path": "incoming-data",
+        "options": {
+          "responseMode": "lastNode",
+          "responseCode": 200
+        }
+      },
+      "webhookId": "webhook-1742485920380"
+    },
+    {
+      "id": "22222222-0000-0000-0000-000000000002",
+      "name": "Filter Valid Data",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 1,
+      "position": [
+        450,
+        500
+      ],
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.hasOwnProperty(\"data\") }}",
+              "operation": "equal",
+              "value2": "true"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "22222222-0000-0000-0000-000000000003",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        650,
+        500
+      ],
+      "parameters": {
+        "options": {
+          "responseBody": "={{ {\"success\": true, \"message\": \"Data received\", \"timestamp\": $now} }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "11111111-0000-0000-0000-000000000001": {
+      "main": [
+        [
+          {
+            "node": "11111111-0000-0000-0000-000000000002",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11111111-0000-0000-0000-000000000002": {
+      "main": [
+        [
+          {
+            "node": "11111111-0000-0000-0000-000000000003",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Sample Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Sample Data": {
+      "main": [
+        [
+          {
+            "node": "Process Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "22222222-0000-0000-0000-000000000001": {
+      "main": [
+        [
+          {
+            "node": "22222222-0000-0000-0000-000000000002",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "22222222-0000-0000-0000-000000000002": {
+      "main": [
+        [
+          {
+            "node": "22222222-0000-0000-0000-000000000003",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Filter Valid Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Valid Data": {
+      "main": [
+        [
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "versionId": "89808ab6-fe19-431c-a8c5-8f9995d85c4b",
+  "id": "ZV5sAXtRve4yFSDt",
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "createdAt": "2025-03-20T15:52:00.410Z",
+  "updatedAt": "2025-03-20T15:52:00.410Z",
+  "triggerCount": 0
+}

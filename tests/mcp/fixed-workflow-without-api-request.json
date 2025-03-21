@@ -1,0 +1,225 @@
+{
+  "createdAt": "2025-03-20T20:26:15.147Z",
+  "updatedAt": "2025-03-20T20:26:15.147Z",
+  "id": "9Vlu8NdVDYSQConb",
+  "name": "Basic Airtable Config",
+  "active": false,
+  "nodes": [
+    {
+      "id": "start-node",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "set-node",
+      "name": "Set Auction ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        450,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "options": {},
+        "fields": {
+          "values": [
+            {
+              "name": "auction_id",
+              "type": "string",
+              "value": "24-10-onondaga-ny"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "function-node",
+      "name": "Create Configuration",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ],
+      "parameters": {
+        "functionCode": "\n// Simple function to create a configuration object\n// This simulates what would come from Airtable\nconst data = $input.item.json || {};\n\n// Add the configuration\nreturn {\n  json: {\n    // Auction information\n    auction_id: data.auction_id || \"24-10-onondaga-ny\",\n\n    // County information\n    countyName: \"Onondaga\",\n    countyState: \"NY\",\n\n    // System information\n    systemName: \"AARAuctions\",\n    systemWebsite: \"https://aarauctions.com/auctions\",\n\n    // Configuration values\n    API_ENDPOINT: \"https://api.example.com/v1/auctions\",\n    API_KEY: \"test-api-key-12345\",\n    INVESTABILITY_THRESHOLD: 5000\n  }\n};\n                    "
+      }
+    },
+    {
+      "id": "noop-node",
+      "name": "Final Result",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ],
+      "parameters": {},
+      "notes": "This is the final configuration that would be used for API requests"
+    },
+    {
+      "id": "display-config-1742504876204",
+      "name": "Display Config",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1450,
+        300
+      ],
+      "parameters": {
+        "functionCode": "\n// This node shows the formatted configuration without trying to make external API calls\nconst config = $input.item.json;\n\n// Add a timestamp to show this is the new version\nconfig._timestamp = new Date().toISOString();\nconfig._info = \"Configuration is ready to use\";\n\nreturn {\n  json: config\n};\n"
+      }
+    }
+  ],
+  "connections": {
+    "start-node": {
+      "main": [
+        [
+          {
+            "node": "set-node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set-node": {
+      "main": [
+        [
+          {
+            "node": "function-node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "function-node": {
+      "main": [
+        [
+          {
+            "node": "noop-node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Auction ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Auction ID": {
+      "main": [
+        [
+          {
+            "node": "Create Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Configuration": {
+      "main": [
+        [
+          {
+            "node": "Final Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "display-config-1742504876204": {
+      "main": [
+        [
+          {
+            "node": "noop-node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Display Config": {
+      "main": [
+        [
+          {
+            "node": "Final Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "aad4f153-6533-41cd-b117-907c3dd75e88",
+  "triggerCount": 0,
+  "shared": [
+    {
+      "createdAt": "2025-03-20T20:26:15.148Z",
+      "updatedAt": "2025-03-20T20:26:15.148Z",
+      "role": "workflow:owner",
+      "workflowId": "9Vlu8NdVDYSQConb",
+      "projectId": "QlUhVSNSLPtKikKo",
+      "project": {
+        "createdAt": "2025-03-19T16:00:41.778Z",
+        "updatedAt": "2025-03-19T19:32:35.720Z",
+        "id": "QlUhVSNSLPtKikKo",
+        "name": "Scott Bergman <scott.a.bergman@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "projectRelations": [
+          {
+            "createdAt": "2025-03-19T16:00:41.778Z",
+            "updatedAt": "2025-03-19T16:00:41.778Z",
+            "role": "project:personalOwner",
+            "userId": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+            "projectId": "QlUhVSNSLPtKikKo",
+            "user": {
+              "createdAt": "2025-03-19T16:00:41.676Z",
+              "updatedAt": "2025-03-20T16:07:34.434Z",
+              "id": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+              "email": "scott.a.bergman@gmail.com",
+              "firstName": "Scott",
+              "lastName": "Bergman",
+              "personalizationAnswers": null,
+              "settings": {
+                "userActivated": true,
+                "firstSuccessfulWorkflowId": "g2Am3Q41Frh1aJwm",
+                "userActivatedAt": 1742486854413
+              },
+              "role": "global:owner",
+              "disabled": false,
+              "mfaEnabled": false,
+              "isPending": false,
+              "isOwner": true
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "tags": []
+}

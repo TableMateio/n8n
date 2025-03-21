@@ -1,0 +1,481 @@
+{
+  "name": "Config Approaches - All in One",
+  "nodes": [
+    {
+      "id": "v1-trigger",
+      "name": "Approach 1: Function Node - Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        100
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "v1-read-config",
+      "name": "Approach 1: Read Configuration",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        300,
+        100
+      ],
+      "parameters": {
+        "filePath": "/Users/scottbergman/Dropbox/TaxSurplus/Technology/n8n/tests/mcp/workflow-config.json",
+        "options": {
+          "encoding": "utf8"
+        }
+      }
+    },
+    {
+      "id": "v1-parse-config",
+      "name": "Approach 1: Parse Config (Function)",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        500,
+        100
+      ],
+      "parameters": {
+        "functionCode": "// Get the binary data and convert to JSON object\nconst configStr = $input.item.binary.data.toString(\"utf8\");\nconst config = JSON.parse(configStr);\n\n// Return the config as a JSON object\nreturn {\n  json: config\n};"
+      }
+    },
+    {
+      "id": "v1-http-request",
+      "name": "Approach 1: Make API Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        700,
+        100
+      ],
+      "parameters": {
+        "url": "={{ $json.apiEndpoint }}",
+        "method": "={{ $json.requestMethod }}",
+        "options": {
+          "timeout": "={{ $json.requestTimeout }}"
+        }
+      }
+    },
+    {
+      "id": "v2-trigger",
+      "name": "Approach 2: Direct Expression - Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "v2-read-config",
+      "name": "Approach 2: Read Configuration",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        300,
+        300
+      ],
+      "parameters": {
+        "filePath": "/Users/scottbergman/Dropbox/TaxSurplus/Technology/n8n/tests/mcp/workflow-config.json",
+        "options": {
+          "encoding": "utf8"
+        }
+      }
+    },
+    {
+      "id": "v2-http-request",
+      "name": "Approach 2: Make API Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "url": "={{ JSON.parse($binary.data.toString()).apiEndpoint }}",
+        "method": "={{ JSON.parse($binary.data.toString()).requestMethod }}",
+        "options": {
+          "timeout": "={{ JSON.parse($binary.data.toString()).requestTimeout }}"
+        }
+      }
+    },
+    {
+      "id": "v3-trigger",
+      "name": "Approach 3: Code Node - Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        500
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "v3-read-config",
+      "name": "Approach 3: Read Configuration",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        300,
+        500
+      ],
+      "parameters": {
+        "filePath": "/Users/scottbergman/Dropbox/TaxSurplus/Technology/n8n/tests/mcp/workflow-config.json",
+        "options": {
+          "encoding": "utf8"
+        }
+      }
+    },
+    {
+      "id": "v3-parse-config",
+      "name": "Approach 3: Parse Config (Code)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        500,
+        500
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Get the binary data and convert to JSON object\nfor (const item of $input.all()) {\n  const binaryData = item.binary.data;\n  const configStr = Buffer.from(binaryData, \"base64\").toString(\"utf8\");\n  const config = JSON.parse(configStr);\n\n  // Return the config as a JSON object\n  item.json = config;\n}\n\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "v3-http-request",
+      "name": "Approach 3: Make API Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        700,
+        500
+      ],
+      "parameters": {
+        "url": "={{ $json.apiEndpoint }}",
+        "method": "={{ $json.requestMethod }}",
+        "options": {
+          "timeout": "={{ $json.requestTimeout }}"
+        }
+      }
+    },
+    {
+      "id": "v4-trigger",
+      "name": "Approach 4: JSON Node - Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        700
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "v4-read-config",
+      "name": "Approach 4: Read Configuration",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        300,
+        700
+      ],
+      "parameters": {
+        "filePath": "/Users/scottbergman/Dropbox/TaxSurplus/Technology/n8n/tests/mcp/workflow-config.json",
+        "options": {
+          "encoding": "utf8"
+        }
+      }
+    },
+    {
+      "id": "v4-convert",
+      "name": "Approach 4: Convert to JSON",
+      "type": "n8n-nodes-base.moveBinaryData",
+      "typeVersion": 1,
+      "position": [
+        500,
+        700
+      ],
+      "parameters": {
+        "mode": "binaryToJson",
+        "sourceKey": "data",
+        "options": {
+          "jsonParse": true
+        }
+      }
+    },
+    {
+      "id": "v4-http-request",
+      "name": "Approach 4: Make API Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        700,
+        700
+      ],
+      "parameters": {
+        "url": "={{ $json.apiEndpoint }}",
+        "method": "={{ $json.requestMethod }}",
+        "options": {
+          "timeout": "={{ $json.requestTimeout }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "v1-trigger": {
+      "main": [
+        [
+          {
+            "node": "v1-read-config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "v1-read-config": {
+      "main": [
+        [
+          {
+            "node": "v1-parse-config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "v1-parse-config": {
+      "main": [
+        [
+          {
+            "node": "v1-http-request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "v2-trigger": {
+      "main": [
+        [
+          {
+            "node": "v2-read-config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "v2-read-config": {
+      "main": [
+        [
+          {
+            "node": "v2-http-request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "v3-trigger": {
+      "main": [
+        [
+          {
+            "node": "v3-read-config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "v3-read-config": {
+      "main": [
+        [
+          {
+            "node": "v3-parse-config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "v3-parse-config": {
+      "main": [
+        [
+          {
+            "node": "v3-http-request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "v4-trigger": {
+      "main": [
+        [
+          {
+            "node": "v4-read-config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "v4-read-config": {
+      "main": [
+        [
+          {
+            "node": "v4-convert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "v4-convert": {
+      "main": [
+        [
+          {
+            "node": "v4-http-request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approach 1: Function Node - Start": {
+      "main": [
+        [
+          {
+            "node": "Approach 1: Read Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approach 1: Read Configuration": {
+      "main": [
+        [
+          {
+            "node": "Approach 1: Parse Config (Function)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approach 1: Parse Config (Function)": {
+      "main": [
+        [
+          {
+            "node": "Approach 1: Make API Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approach 2: Direct Expression - Start": {
+      "main": [
+        [
+          {
+            "node": "Approach 2: Read Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approach 2: Read Configuration": {
+      "main": [
+        [
+          {
+            "node": "Approach 2: Make API Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approach 3: Code Node - Start": {
+      "main": [
+        [
+          {
+            "node": "Approach 3: Read Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approach 3: Read Configuration": {
+      "main": [
+        [
+          {
+            "node": "Approach 3: Parse Config (Code)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approach 3: Parse Config (Code)": {
+      "main": [
+        [
+          {
+            "node": "Approach 3: Make API Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approach 4: JSON Node - Start": {
+      "main": [
+        [
+          {
+            "node": "Approach 4: Read Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approach 4: Read Configuration": {
+      "main": [
+        [
+          {
+            "node": "Approach 4: Convert to JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approach 4: Convert to JSON": {
+      "main": [
+        [
+          {
+            "node": "Approach 4: Make API Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "versionId": "99d999b0-4a78-4d2b-a1b1-f797512cd78c",
+  "id": "y9BQAYsDKnnBJ6A5",
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "createdAt": "2025-03-20T16:18:42.667Z",
+  "updatedAt": "2025-03-20T16:18:42.667Z",
+  "triggerCount": 0
+}

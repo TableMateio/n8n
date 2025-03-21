@@ -1,0 +1,154 @@
+{
+  "name": "Workflow Execution Example",
+  "nodes": [
+    {
+      "id": "eeeeeeee-0000-0000-0000-000000000001",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "eeeeeeee-0000-0000-0000-000000000002",
+      "name": "Prepare Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "data",
+              "value": "sample data"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $now }}"
+            }
+          ],
+          "number": [
+            {
+              "name": "id",
+              "value": 12345
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "eeeeeeee-0000-0000-0000-000000000003",
+      "name": "Execute Process Workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ],
+      "parameters": {
+        "workflowId": "g2Am3Q41Frh1aJwm",
+        "options": {}
+      }
+    },
+    {
+      "id": "eeeeeeee-0000-0000-0000-000000000004",
+      "name": "Handle Result",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ],
+      "parameters": {
+        "functionCode": "// Get the result from the executed workflow\nconst result = $input.item.json;\n\n// Add our own information\nreturn {\n  json: {\n    ...result,\n    handledBy: \"caller workflow\",\n    finalTimestamp: new Date().toISOString(),\n    summary: `Successfully processed data with ID ${result.id}`\n  }\n}"
+      }
+    }
+  ],
+  "connections": {
+    "eeeeeeee-0000-0000-0000-000000000001": {
+      "main": [
+        [
+          {
+            "node": "eeeeeeee-0000-0000-0000-000000000002",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "eeeeeeee-0000-0000-0000-000000000002": {
+      "main": [
+        [
+          {
+            "node": "eeeeeeee-0000-0000-0000-000000000003",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "eeeeeeee-0000-0000-0000-000000000003": {
+      "main": [
+        [
+          {
+            "node": "eeeeeeee-0000-0000-0000-000000000004",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Prepare Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Data": {
+      "main": [
+        [
+          {
+            "node": "Execute Process Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Process Workflow": {
+      "main": [
+        [
+          {
+            "node": "Handle Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "versionId": "6747b687-9703-4e40-a5a4-729a9d117ea0",
+  "id": "qK86hUrRkrwI8rSw",
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "createdAt": "2025-03-20T16:07:14.647Z",
+  "updatedAt": "2025-03-20T16:07:14.647Z",
+  "triggerCount": 0
+}

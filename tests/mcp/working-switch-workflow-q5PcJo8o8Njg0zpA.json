@@ -1,0 +1,316 @@
+{
+  "name": "Working Switch Workflow",
+  "nodes": [
+    {
+      "id": "9dd89378-5acf-4ca6-8d84-e6e64254ed02",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "8f37a7d2-2424-4a30-b9d2-2cd448fa2299",
+      "name": "Get Todo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ],
+      "parameters": {
+        "url": "https://jsonplaceholder.typicode.com/todos/1",
+        "options": {}
+      }
+    },
+    {
+      "id": "d6e23cef-3cf6-4cae-9d4e-5d49a8234d79",
+      "name": "Set Status",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "completed"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "87cf9b41-66de-49a7-aeb0-c8809191b5a0",
+      "name": "Status Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        850,
+        300
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "Completed",
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "leftValue": "",
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json[\"status\"] }}",
+                    "rightValue": "completed"
+                  }
+                ]
+              },
+              "renameOutput": true
+            },
+            {
+              "outputKey": "Not Completed",
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "leftValue": "",
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    },
+                    "leftValue": "={{ $json[\"status\"] }}",
+                    "rightValue": "completed"
+                  }
+                ]
+              },
+              "renameOutput": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "aaaaaaaa-1111-2222-3333-444444444444",
+      "name": "Handle Completed",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        200
+      ],
+      "parameters": {
+        "functionCode": "return {\n  json: {\n    result: \"This item is completed!\",\n    input: $input.item.json\n  }\n}"
+      }
+    },
+    {
+      "id": "bbbbbbbb-1111-2222-3333-444444444444",
+      "name": "Handle Not Completed",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        400
+      ],
+      "parameters": {
+        "functionCode": "return {\n  json: {\n    result: \"This item is NOT completed!\",\n    input: $input.item.json\n  }\n}"
+      }
+    },
+    {
+      "id": "cccccccc-1111-2222-3333-444444444444",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        300
+      ],
+      "parameters": {
+        "mode": "passThrough",
+        "joinMode": "mergeByPosition",
+        "outputDataFrom": "input1",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "9dd89378-5acf-4ca6-8d84-e6e64254ed02": {
+      "main": [
+        [
+          {
+            "node": "8f37a7d2-2424-4a30-b9d2-2cd448fa2299",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8f37a7d2-2424-4a30-b9d2-2cd448fa2299": {
+      "main": [
+        [
+          {
+            "node": "d6e23cef-3cf6-4cae-9d4e-5d49a8234d79",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "d6e23cef-3cf6-4cae-9d4e-5d49a8234d79": {
+      "main": [
+        [
+          {
+            "node": "87cf9b41-66de-49a7-aeb0-c8809191b5a0",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "87cf9b41-66de-49a7-aeb0-c8809191b5a0": {
+      "main": [
+        [
+          {
+            "node": "aaaaaaaa-1111-2222-3333-444444444444",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "bbbbbbbb-1111-2222-3333-444444444444",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "aaaaaaaa-1111-2222-3333-444444444444": {
+      "main": [
+        [
+          {
+            "node": "cccccccc-1111-2222-3333-444444444444",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bbbbbbbb-1111-2222-3333-444444444444": {
+      "main": [
+        [
+          {
+            "node": "cccccccc-1111-2222-3333-444444444444",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Get Todo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Todo": {
+      "main": [
+        [
+          {
+            "node": "Set Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Status": {
+      "main": [
+        [
+          {
+            "node": "Status Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status Switch": {
+      "main": [
+        [
+          {
+            "node": "Handle Completed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Not Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Completed": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Not Completed": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "versionId": "c4a176ec-ff3e-4320-bb7d-bd164227da2e",
+  "id": "q5PcJo8o8Njg0zpA",
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "createdAt": "2025-03-20T15:46:21.579Z",
+  "updatedAt": "2025-03-20T15:46:21.579Z",
+  "triggerCount": 0
+}

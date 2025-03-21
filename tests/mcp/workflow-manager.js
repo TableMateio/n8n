@@ -404,6 +404,47 @@ class WorkflowManager {
 			}
 		});
 	}
+
+	/**
+	 * Get a list of all credentials
+	 *
+	 * @returns {Promise<Array>} Promise that resolves to an array of credentials
+	 */
+	async getCredentials() {
+		const response = await this.makeN8nRequest('/credentials/all', 'GET');
+		return response.data || [];
+	}
+
+	/**
+	 * Get a credential by ID
+	 *
+	 * @param {string} id The ID of the credential to get
+	 * @returns {Promise<Object>} Promise that resolves to the credential
+	 */
+	async getCredential(id) {
+		return await this.makeN8nRequest(`/credentials/${id}`);
+	}
+
+	/**
+	 * Execute a workflow by ID
+	 *
+	 * @param {string} id The ID of the workflow to execute
+	 * @param {Object} data Optional workflow input data
+	 * @returns {Promise<Object>} Promise that resolves to the execution
+	 */
+	async executeWorkflow(id, data = {}) {
+		return await this.makeN8nRequest(`/workflows/${id}/execute`, 'POST', data);
+	}
+
+	/**
+	 * Get execution data by ID
+	 *
+	 * @param {string} id The ID of the execution to get
+	 * @returns {Promise<Object>} Promise that resolves to the execution data
+	 */
+	async getExecutionData(id) {
+		return await this.makeN8nRequest(`/executions/${id}`);
+	}
 }
 
 // Export the class

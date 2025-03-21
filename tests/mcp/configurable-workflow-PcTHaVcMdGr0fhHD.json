@@ -1,0 +1,190 @@
+{
+  "name": "Configurable Workflow Example",
+  "nodes": [
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000001",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000002",
+      "name": "Read Configuration",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ],
+      "parameters": {
+        "filePath": "/Users/scottbergman/Dropbox/TaxSurplus/Technology/n8n/tests/mcp/workflow-config.json",
+        "options": {
+          "encoding": "utf8"
+        }
+      }
+    },
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000003",
+      "name": "Make API Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ],
+      "parameters": {
+        "url": "={{ JSON.parse($binary[\"data\"][\"toString\"](\"utf8\")).apiEndpoint }}",
+        "method": "={{ JSON.parse($binary[\"data\"][\"toString\"](\"utf8\")).requestMethod }}",
+        "options": {
+          "timeout": "={{ JSON.parse($binary[\"data\"][\"toString\"](\"utf8\")).requestTimeout }}"
+        }
+      }
+    },
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000004",
+      "name": "Apply Processing Rules",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ],
+      "parameters": {
+        "functionCode": "// Parse the configuration file content\nconst rawData = $items[0].binary.data.toString(\"utf8\");\nconst config = JSON.parse(rawData);\n\n// Get API data from the previous node\nconst apiData = $items[1].json;\n\n// Apply processing rules from config\nreturn {\n  json: {\n    ...apiData,\n    assigned: config.processingRules.assignTo,\n    priority: config.processingRules.priority,\n    processed: true,\n    processedAt: new Date().toISOString(),\n    statusField: config.statusField,\n    statusValue: config.statusValue\n  }\n}"
+      }
+    },
+    {
+      "id": "aaaaaaaa-0000-0000-0000-000000000005",
+      "name": "Send Notification",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        300
+      ],
+      "parameters": {
+        "customPropertyString": [
+          {
+            "name": "subject",
+            "value": "Task processed successfully"
+          },
+          {
+            "name": "recipient",
+            "value": "={{ JSON.parse($items[0].binary.data.toString(\"utf8\")).processingRules.notifyEmail }}"
+          },
+          {
+            "name": "message",
+            "value": "={{ `Task ${$items[1].json.id} has been processed with ${$items[1].json.priority} priority and assigned to ${$items[1].json.assigned}.` }}"
+          }
+        ]
+      }
+    }
+  ],
+  "connections": {
+    "aaaaaaaa-0000-0000-0000-000000000001": {
+      "main": [
+        [
+          {
+            "node": "aaaaaaaa-0000-0000-0000-000000000002",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "aaaaaaaa-0000-0000-0000-000000000002": {
+      "main": [
+        [
+          {
+            "node": "aaaaaaaa-0000-0000-0000-000000000003",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "aaaaaaaa-0000-0000-0000-000000000003": {
+      "main": [
+        [
+          {
+            "node": "aaaaaaaa-0000-0000-0000-000000000004",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "aaaaaaaa-0000-0000-0000-000000000004": {
+      "main": [
+        [
+          {
+            "node": "aaaaaaaa-0000-0000-0000-000000000005",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Read Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Configuration": {
+      "main": [
+        [
+          {
+            "node": "Make API Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Make API Request": {
+      "main": [
+        [
+          {
+            "node": "Apply Processing Rules",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Processing Rules": {
+      "main": [
+        [
+          {
+            "node": "Send Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "versionId": "aa66cfe2-eaa9-4606-a5b4-9b42e0f518ae",
+  "id": "PcTHaVcMdGr0fhHD",
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "createdAt": "2025-03-20T16:09:31.235Z",
+  "updatedAt": "2025-03-20T16:09:31.235Z",
+  "triggerCount": 0
+}

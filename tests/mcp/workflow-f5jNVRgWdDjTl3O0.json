@@ -1,0 +1,547 @@
+{
+  "createdAt": "2025-03-20T14:34:34.529Z",
+  "updatedAt": "2025-03-20T15:15:28.776Z",
+  "id": "f5jNVRgWdDjTl3O0",
+  "name": "Test HTTP Workflow",
+  "active": false,
+  "nodes": [
+    {
+      "id": "3fa0917e-ae9c-4e6e-af8b-d24a4a125d0c",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "8f37a7d2-2424-4a30-b9d2-2cd448fa2299",
+      "name": "Get Todo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        490,
+        300
+      ],
+      "parameters": {
+        "url": "https://jsonplaceholder.typicode.com/todos/1",
+        "options": {}
+      }
+    },
+    {
+      "id": "function-1742483318740",
+      "name": "Transform Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ],
+      "parameters": {
+        "functionCode": "// This function transforms data from the HTTP request\nconst data = items[0].json;\n\n// Add some transformed fields\nreturn [\n  {\n    json: {\n      ...data,\n      transformedAt: new Date().toISOString(),\n      userId: data.userId * 10, // Multiply the user ID by 10\n      completed: !data.completed, // Flip the completion status\n      custom: \"This item was processed by Transform Data node\"\n    }\n  }\n];\n"
+      }
+    },
+    {
+      "id": "d6e23cef-3cf6-4cae-9d4e-5d49a8234d79",
+      "name": "Set Status",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        990,
+        300
+      ],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "completed"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "code-1742483196704",
+      "name": "Process Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1240,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Example code that processes data from the previous node\nconst items = $input.all();\nconst results = items.map(item => {\n  // Add a new field to each item\n  return {\n    ...item.json,\n    processed: true,\n    timestamp: new Date().toISOString()\n  };\n});\n\nreturn results.map(json => ({ json }));"
+      }
+    },
+    {
+      "id": "noop-1742483586613",
+      "name": "Alternative Path",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        490,
+        500
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "func-branch-1742483586613",
+      "name": "Process Alternative",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        740,
+        500
+      ],
+      "parameters": {
+        "functionCode": "// This function handles the alternative path\nconst data = items[0].json;\n\n// Process the data differently than the main path\nreturn [\n  {\n    json: {\n      original: data,\n      path: \"alternative\",\n      timestamp: new Date().toISOString(),\n      processingNote: \"This data was processed through the alternative path\"\n    }\n  }\n];\n"
+      }
+    },
+    {
+      "id": "merge-1742483586613",
+      "name": "Merge Paths",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        400
+      ],
+      "parameters": {
+        "mode": "append"
+      }
+    },
+    {
+      "id": "switch-1742483728762",
+      "name": "Route by Todo Status",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        560,
+        300
+      ],
+      "parameters": {
+        "dataType": "string",
+        "rules": {
+          "mode": "single",
+          "rules": [
+            {
+              "operation": "contains",
+              "value1": "={{$json[\"completed\"]}}",
+              "value2": "true"
+            },
+            {
+              "operation": "contains",
+              "value1": "={{$json[\"completed\"]}}",
+              "value2": "false"
+            }
+          ]
+        },
+        "fallbackOutput": "3",
+        "options": {}
+      }
+    },
+    {
+      "id": "completed-1742483728762",
+      "name": "Process Completed Todo",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        780,
+        200
+      ],
+      "parameters": {
+        "functionCode": "// Process completed todo items\nconst data = items[0].json;\n\nreturn [\n  {\n    json: {\n      original: data,\n      status: \"completed\",\n      message: \"This todo is already completed!\",\n      priority: \"low\",\n      processed: new Date().toISOString()\n    }\n  }\n];"
+      }
+    },
+    {
+      "id": "incomplete-1742483728762",
+      "name": "Process Incomplete Todo",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        780,
+        400
+      ],
+      "parameters": {
+        "functionCode": "// Process incomplete todo items\nconst data = items[0].json;\n\nreturn [\n  {\n    json: {\n      original: data,\n      status: \"incomplete\",\n      message: \"This todo needs attention!\",\n      priority: \"high\",\n      processed: new Date().toISOString()\n    }\n  }\n];"
+      }
+    },
+    {
+      "id": "default-1742483728762",
+      "name": "Handle Unknown Status",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        780,
+        600
+      ],
+      "parameters": {
+        "functionCode": "// Handle items with unknown status\nconst data = items[0].json;\n\nreturn [\n  {\n    json: {\n      original: data,\n      status: \"unknown\",\n      message: \"This todo has an invalid status!\",\n      priority: \"medium\",\n      processed: new Date().toISOString()\n    }\n  }\n];"
+      }
+    },
+    {
+      "id": "join-1742483728762",
+      "name": "Join Paths",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        400
+      ],
+      "parameters": {
+        "mode": "append"
+      }
+    }
+  ],
+  "connections": {
+    "3fa0917e-ae9c-4e6e-af8b-d24a4a125d0c": {
+      "main": [
+        [
+          {
+            "node": "8f37a7d2-2424-4a30-b9d2-2cd448fa2299",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8f37a7d2-2424-4a30-b9d2-2cd448fa2299": {
+      "main": [
+        [
+          {
+            "node": "switch-1742483728762",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Get Todo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Todo": {
+      "main": [
+        [
+          {
+            "node": "Route by Todo Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "d6e23cef-3cf6-4cae-9d4e-5d49a8234d79": {
+      "main": [
+        [
+          {
+            "node": "code-1742483196704",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Status": {
+      "main": [
+        [
+          {
+            "node": "Process Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "function-1742483318740": {
+      "main": [
+        [
+          {
+            "node": "d6e23cef-3cf6-4cae-9d4e-5d49a8234d79",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform Data": {
+      "main": [
+        [
+          {
+            "node": "Set Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "noop-1742483586613": {
+      "main": [
+        [
+          {
+            "node": "func-branch-1742483586613",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alternative Path": {
+      "main": [
+        [
+          {
+            "node": "Process Alternative",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "code-1742483196704": {
+      "main": [
+        [
+          {
+            "node": "merge-1742483586613",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Data": {
+      "main": [
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "func-branch-1742483586613": {
+      "main": [
+        [
+          {
+            "node": "merge-1742483586613",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Process Alternative": {
+      "main": [
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "switch-1742483728762": {
+      "main": [
+        [
+          {
+            "node": "completed-1742483728762",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "incomplete-1742483728762",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "default-1742483728762",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Todo Status": {
+      "main": [
+        [
+          {
+            "node": "Process Completed Todo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Process Incomplete Todo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Unknown Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "completed-1742483728762": {
+      "main": [
+        [
+          {
+            "node": "join-1742483728762",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "incomplete-1742483728762": {
+      "main": [
+        [
+          {
+            "node": "join-1742483728762",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "default-1742483728762": {
+      "main": [
+        [
+          {
+            "node": "join-1742483728762",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Process Completed Todo": {
+      "main": [
+        [
+          {
+            "node": "Join Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Incomplete Todo": {
+      "main": [
+        [
+          {
+            "node": "Join Paths",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Handle Unknown Status": {
+      "main": [
+        [
+          {
+            "node": "Join Paths",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "join-1742483728762": {
+      "main": [
+        [
+          {
+            "node": "Transform Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Join Paths": {
+      "main": [
+        [
+          {
+            "node": "Transform Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "56acdcb0-7bf4-4680-829c-52c171555f82",
+  "triggerCount": 0,
+  "shared": [
+    {
+      "createdAt": "2025-03-20T14:34:34.532Z",
+      "updatedAt": "2025-03-20T14:34:34.532Z",
+      "role": "workflow:owner",
+      "workflowId": "f5jNVRgWdDjTl3O0",
+      "projectId": "QlUhVSNSLPtKikKo",
+      "project": {
+        "createdAt": "2025-03-19T16:00:41.778Z",
+        "updatedAt": "2025-03-19T19:32:35.720Z",
+        "id": "QlUhVSNSLPtKikKo",
+        "name": "Scott Bergman <scott.a.bergman@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "projectRelations": [
+          {
+            "createdAt": "2025-03-19T16:00:41.778Z",
+            "updatedAt": "2025-03-19T16:00:41.778Z",
+            "role": "project:personalOwner",
+            "userId": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+            "projectId": "QlUhVSNSLPtKikKo",
+            "user": {
+              "createdAt": "2025-03-19T16:00:41.676Z",
+              "updatedAt": "2025-03-19T19:32:35.714Z",
+              "id": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+              "email": "scott.a.bergman@gmail.com",
+              "firstName": "Scott",
+              "lastName": "Bergman",
+              "personalizationAnswers": null,
+              "settings": {
+                "userActivated": false
+              },
+              "role": "global:owner",
+              "disabled": false,
+              "mfaEnabled": false,
+              "isPending": false,
+              "isOwner": true
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "tags": []
+}

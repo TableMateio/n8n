@@ -1,0 +1,275 @@
+{
+  "name": "Simple Switch Workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "aaaaaaaa-0000-1111-2222-333333333333",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://jsonplaceholder.typicode.com/todos/1",
+        "options": {}
+      },
+      "id": "bbbbbbbb-0000-1111-2222-333333333333",
+      "name": "Get Todo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "completed"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cccccccc-0000-1111-2222-333333333333",
+      "name": "Set Status",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "rules": {
+          "mode": "single",
+          "rules": [
+            {
+              "operation": "equal",
+              "value1": "={{$json[\"status\"]}}",
+              "value2": "completed"
+            }
+          ]
+        },
+        "fallbackOutput": "1",
+        "options": {}
+      },
+      "id": "dddddddd-0000-1111-2222-333333333333",
+      "name": "Route by Status",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process completed status\nconst data = items[0].json;\n\nreturn [\n  {\n    json: {\n      ...data,\n      priorityLevel: \"low\",\n      message: \"This is already done\"\n    }\n  }\n];"
+      },
+      "id": "eeeeeeee-0000-1111-2222-333333333333",
+      "name": "Process Completed",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process other status\nconst data = items[0].json;\n\nreturn [\n  {\n    json: {\n      ...data,\n      priorityLevel: \"high\",\n      message: \"This needs attention\"\n    }\n  }\n];"
+      },
+      "id": "ffffffff-0000-1111-2222-333333333333",
+      "name": "Process Other",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "gggggggg-0000-1111-2222-333333333333",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "aaaaaaaa-0000-1111-2222-333333333333": {
+      "main": [
+        [
+          {
+            "node": "bbbbbbbb-0000-1111-2222-333333333333",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "bbbbbbbb-0000-1111-2222-333333333333": {
+      "main": [
+        [
+          {
+            "node": "cccccccc-0000-1111-2222-333333333333",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cccccccc-0000-1111-2222-333333333333": {
+      "main": [
+        [
+          {
+            "node": "dddddddd-0000-1111-2222-333333333333",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "dddddddd-0000-1111-2222-333333333333": {
+      "main": [
+        [
+          {
+            "node": "eeeeeeee-0000-1111-2222-333333333333",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "ffffffff-0000-1111-2222-333333333333",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "eeeeeeee-0000-1111-2222-333333333333": {
+      "main": [
+        [
+          {
+            "node": "gggggggg-0000-1111-2222-333333333333",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ffffffff-0000-1111-2222-333333333333": {
+      "main": [
+        [
+          {
+            "node": "gggggggg-0000-1111-2222-333333333333",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Get Todo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Todo": {
+      "main": [
+        [
+          {
+            "node": "Set Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Status": {
+      "main": [
+        [
+          {
+            "node": "Route by Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Status": {
+      "main": [
+        [
+          {
+            "node": "Process Completed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Process Other",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Completed": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Other": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "versionId": "9771773a-ce7e-4dfa-bfb8-19457d5e8c50",
+  "id": "ArcZWQ0ULxtKJYOT",
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "createdAt": "2025-03-20T15:28:06.005Z",
+  "updatedAt": "2025-03-20T15:28:06.005Z",
+  "triggerCount": 0
+}

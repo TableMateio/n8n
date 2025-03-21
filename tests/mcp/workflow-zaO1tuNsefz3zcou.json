@@ -1,0 +1,324 @@
+{
+  "createdAt": "2025-03-20T15:17:59.056Z",
+  "updatedAt": "2025-03-20T15:17:59.076Z",
+  "id": "zaO1tuNsefz3zcou",
+  "name": "Proper Connection Workflow",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "start_node",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://jsonplaceholder.typicode.com/todos/1",
+        "options": {}
+      },
+      "id": "http_node",
+      "name": "Get Todo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "completed"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set_node",
+      "name": "Set Status",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "id": "switch_node",
+      "name": "Route by Status",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        850,
+        300
+      ],
+      "parameters": {
+        "dataType": "string",
+        "rules": {
+          "mode": "single",
+          "rules": [
+            {
+              "operation": "equal",
+              "value1": "={{$json[\"status\"]}}",
+              "value2": "completed"
+            },
+            {
+              "operation": "equal",
+              "value1": "={{$json[\"status\"]}}",
+              "value2": "incomplete"
+            }
+          ]
+        },
+        "fallbackOutput": "2",
+        "options": {}
+      }
+    },
+    {
+      "id": "completed_node",
+      "name": "Handle Completed",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        200
+      ],
+      "parameters": {
+        "functionCode": "// Process completed status\nconst data = items[0].json;\n\nreturn [\n  {\n    json: {\n      ...data,\n      priorityLevel: \"low\",\n      message: \"This is already done\"\n    }\n  }\n];"
+      }
+    },
+    {
+      "id": "incomplete_node",
+      "name": "Handle Incomplete",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        400
+      ],
+      "parameters": {
+        "functionCode": "// Process incomplete status\nconst data = items[0].json;\n\nreturn [\n  {\n    json: {\n      ...data,\n      priorityLevel: \"high\",\n      message: \"This needs attention\"\n    }\n  }\n];"
+      }
+    },
+    {
+      "id": "merge_node",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        300
+      ],
+      "parameters": {
+        "mode": "append"
+      }
+    }
+  ],
+  "connections": {
+    "start_node": {
+      "main": [
+        [
+          {
+            "node": "http_node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "http_node": {
+      "main": [
+        [
+          {
+            "node": "set_node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Get Todo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Todo": {
+      "main": [
+        [
+          {
+            "node": "Set Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set_node": {
+      "main": [
+        [
+          {
+            "node": "switch_node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Status": {
+      "main": [
+        [
+          {
+            "node": "Route by Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "switch_node": {
+      "main": [
+        [
+          {
+            "node": "completed_node",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "incomplete_node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Status": {
+      "main": [
+        [
+          {
+            "node": "Handle Completed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Incomplete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "completed_node": {
+      "main": [
+        [
+          {
+            "node": "merge_node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "incomplete_node": {
+      "main": [
+        [
+          {
+            "node": "merge_node",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Handle Completed": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Incomplete": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "7a6c09c2-5d8d-4e6d-ab26-3807940d4213",
+  "triggerCount": 0,
+  "shared": [
+    {
+      "createdAt": "2025-03-20T15:17:59.057Z",
+      "updatedAt": "2025-03-20T15:17:59.057Z",
+      "role": "workflow:owner",
+      "workflowId": "zaO1tuNsefz3zcou",
+      "projectId": "QlUhVSNSLPtKikKo",
+      "project": {
+        "createdAt": "2025-03-19T16:00:41.778Z",
+        "updatedAt": "2025-03-19T19:32:35.720Z",
+        "id": "QlUhVSNSLPtKikKo",
+        "name": "Scott Bergman <scott.a.bergman@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "projectRelations": [
+          {
+            "createdAt": "2025-03-19T16:00:41.778Z",
+            "updatedAt": "2025-03-19T16:00:41.778Z",
+            "role": "project:personalOwner",
+            "userId": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+            "projectId": "QlUhVSNSLPtKikKo",
+            "user": {
+              "createdAt": "2025-03-19T16:00:41.676Z",
+              "updatedAt": "2025-03-19T19:32:35.714Z",
+              "id": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+              "email": "scott.a.bergman@gmail.com",
+              "firstName": "Scott",
+              "lastName": "Bergman",
+              "personalizationAnswers": null,
+              "settings": {
+                "userActivated": false
+              },
+              "role": "global:owner",
+              "disabled": false,
+              "mfaEnabled": false,
+              "isPending": false,
+              "isOwner": true
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "tags": []
+}

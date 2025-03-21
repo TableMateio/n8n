@@ -1,0 +1,224 @@
+{
+  "createdAt": "2025-03-20T15:27:06.626Z",
+  "updatedAt": "2025-03-20T15:27:06.626Z",
+  "id": "wqyrPjY2OJ5IuFrq",
+  "name": "Simple Linear Workflow",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e45f0f99-9973-43bd-b197-7b1de37e6d63",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://jsonplaceholder.typicode.com/todos/1",
+        "options": {}
+      },
+      "id": "f12fcb30-1e83-4f97-ab21-2dacf9c8e2e8",
+      "name": "Get Todo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "completed"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c2101b1a-c958-4afe-b6c0-e7f624e243bb",
+      "name": "Set Status",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        640,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process data\nconst data = items[0].json;\n\nreturn [\n  {\n    json: {\n      ...data,\n      processed: true,\n      timestamp: new Date().toISOString()\n    }\n  }\n];"
+      },
+      "id": "8b31e3ff-6a40-4f1c-a750-e7315625c1dc",
+      "name": "Process Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        840,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Final code processing\nconst item = $input.item;\nreturn {\n  result: \"success\",\n  data: item,\n  summary: \"Processed todo item: \" + item.title\n};"
+      },
+      "id": "aad36490-99bc-47f9-bf79-c39e33c27b16",
+      "name": "Format Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "e45f0f99-9973-43bd-b197-7b1de37e6d63": {
+      "main": [
+        [
+          {
+            "node": "f12fcb30-1e83-4f97-ab21-2dacf9c8e2e8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "f12fcb30-1e83-4f97-ab21-2dacf9c8e2e8": {
+      "main": [
+        [
+          {
+            "node": "c2101b1a-c958-4afe-b6c0-e7f624e243bb",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "c2101b1a-c958-4afe-b6c0-e7f624e243bb": {
+      "main": [
+        [
+          {
+            "node": "8b31e3ff-6a40-4f1c-a750-e7315625c1dc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8b31e3ff-6a40-4f1c-a750-e7315625c1dc": {
+      "main": [
+        [
+          {
+            "node": "aad36490-99bc-47f9-bf79-c39e33c27b16",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Get Todo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Todo": {
+      "main": [
+        [
+          {
+            "node": "Set Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Status": {
+      "main": [
+        [
+          {
+            "node": "Process Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Data": {
+      "main": [
+        [
+          {
+            "node": "Format Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "7d1c3d73-2dd7-42bb-8f3d-64de8b7e7406",
+  "triggerCount": 0,
+  "shared": [
+    {
+      "createdAt": "2025-03-20T15:27:06.627Z",
+      "updatedAt": "2025-03-20T15:27:06.627Z",
+      "role": "workflow:owner",
+      "workflowId": "wqyrPjY2OJ5IuFrq",
+      "projectId": "QlUhVSNSLPtKikKo",
+      "project": {
+        "createdAt": "2025-03-19T16:00:41.778Z",
+        "updatedAt": "2025-03-19T19:32:35.720Z",
+        "id": "QlUhVSNSLPtKikKo",
+        "name": "Scott Bergman <scott.a.bergman@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "projectRelations": [
+          {
+            "createdAt": "2025-03-19T16:00:41.778Z",
+            "updatedAt": "2025-03-19T16:00:41.778Z",
+            "role": "project:personalOwner",
+            "userId": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+            "projectId": "QlUhVSNSLPtKikKo",
+            "user": {
+              "createdAt": "2025-03-19T16:00:41.676Z",
+              "updatedAt": "2025-03-19T19:32:35.714Z",
+              "id": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+              "email": "scott.a.bergman@gmail.com",
+              "firstName": "Scott",
+              "lastName": "Bergman",
+              "personalizationAnswers": null,
+              "settings": {
+                "userActivated": false
+              },
+              "role": "global:owner",
+              "disabled": false,
+              "mfaEnabled": false,
+              "isPending": false,
+              "isOwner": true
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "tags": []
+}

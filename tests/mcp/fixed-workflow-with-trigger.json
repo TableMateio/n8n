@@ -1,0 +1,606 @@
+{
+  "createdAt": "2025-03-20T19:34:01.970Z",
+  "updatedAt": "2025-03-20T23:08:11.387Z",
+  "id": "SlR4PULINjXn4p11",
+  "name": "Dynamic Airtable Configuration",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "include": "all",
+        "assignments": {
+          "assignments": [
+            {
+              "name": "auction_id",
+              "type": "string",
+              "value": "24-10-onondaga-ny"
+            }
+          ]
+        }
+      },
+      "id": "set-sample-id",
+      "name": "Set Sample Auction ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "record",
+        "operation": "search",
+        "application": "airtable",
+        "base": {
+          "__rl": true,
+          "value": "appWxxzsTHMY0MZHu",
+          "mode": "list",
+          "cachedResultName": "Tax Surplus",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblteK8SeHqZ8xQxV",
+          "mode": "list",
+          "cachedResultName": "Auctions",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tblteK8SeHqZ8xQxV"
+        },
+        "filterByFormula": "{fld7zoOS3uQg4tiyh} = '{{$json.auction_id}}'",
+        "options": {}
+      },
+      "id": "get-auction",
+      "name": "Get Auction Details",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        650,
+        300
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "KqeYloYYVZeNChgU",
+          "name": "Airtable"
+        }
+      },
+      "notes": "Using field IDs from the AirtableFields.csv:\n\nfld7zoOS3uQg4tiyh - Auction (Primary Field)\nfldMokcnoIWJTFCbC - County"
+    },
+    {
+      "parameters": {},
+      "id": "debug-auction",
+      "name": "Debug Auction",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        850,
+        200
+      ],
+      "notes": "View the auction details retrieved from Airtable"
+    },
+    {
+      "parameters": {
+        "resource": "record",
+        "operation": "search",
+        "application": "airtable",
+        "base": {
+          "__rl": true,
+          "value": "appWxxzsTHMY0MZHu",
+          "mode": "list",
+          "cachedResultName": "Tax Surplus",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblgJ8IbhYrpIqXq4",
+          "mode": "list",
+          "cachedResultName": "Counties",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tblgJ8IbhYrpIqXq4"
+        },
+        "filterByFormula": "{fldHigOlHwCUr6WiI} = '{{$node[\"Get Auction Details\"].json[\"fields\"][\"fldQM9eGzadxpJujs\"]}}' ",
+        "options": {}
+      },
+      "id": "get-county",
+      "name": "Get County Information",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        850,
+        400
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "KqeYloYYVZeNChgU",
+          "name": "Airtable"
+        }
+      },
+      "notes": "Using field IDs from the AirtableFields.csv:\n\nfldQ7BCXWtcTh4tFV - County (Primary Field)\nfld0hrQJQp8iSIl8a - Name\nfldY2ffjVwpdk9HYw - State\nfldaPTtDb8cKT9EzC - Auction System\nfldrbZk8Kl4GWSwbu - Clerk System\nfldePJXHa2kviFwMA - Property System\nfldmWj2helazqxMFX - Tax System"
+    },
+    {
+      "parameters": {},
+      "id": "debug-county",
+      "name": "Debug County",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        200
+      ],
+      "notes": "View the county details retrieved from Airtable"
+    },
+    {
+      "parameters": {
+        "resource": "record",
+        "operation": "search",
+        "application": "airtable",
+        "base": {
+          "__rl": true,
+          "value": "appWxxzsTHMY0MZHu",
+          "mode": "list",
+          "cachedResultName": "Tax Surplus",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl3tOZ5GZNBr1dV1",
+          "mode": "list",
+          "cachedResultName": "Auction Systems",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tbl3tOZ5GZNBr1dV1"
+        },
+        "filterByFormula": "{fldJRPLl1k5U6uVjx} = '{{$node[\"Get County Information\"].json[\"fields\"][\"fldscDHfQSUBCzPCK\"]}}' ",
+        "options": {}
+      },
+      "id": "get-auction-system",
+      "name": "Get Auction System",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        400
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "KqeYloYYVZeNChgU",
+          "name": "Airtable"
+        }
+      },
+      "notes": "Using field IDs from the AirtableFields.csv:\n\nfld3NcywWUhW2DkAa - System (Primary Field)\nfldWRx9pyJqovdtsf - Name\nfldhOpmEIeRgSIPfT - Type\nfldsoee9Ww6FN3nhq - Website"
+    },
+    {
+      "parameters": {},
+      "id": "debug-system",
+      "name": "Debug System",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        200
+      ],
+      "notes": "View the system details retrieved from Airtable"
+    },
+    {
+      "parameters": {
+        "resource": "record",
+        "operation": "search",
+        "application": "airtable",
+        "base": {
+          "__rl": true,
+          "value": "appWxxzsTHMY0MZHu",
+          "mode": "list",
+          "cachedResultName": "Tax Surplus",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblLq0PQKTj9XsYnr",
+          "mode": "list",
+          "cachedResultName": "Configuration",
+          "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tblLq0PQKTj9XsYnr"
+        },
+        "filterByFormula": "AND(\n\t\t\t\t\t\t{scope} = 'global',\n\t\t\t\t\t\tOR(\n\t\t\t\t\t\t\t{scope_id} = '',\n\t\t\t\t\t\t\t{scope_id} = '{{$node[\"Get Auction System\"].json[\"fields\"][\"fldJRPLl1k5U6uVjx\"]}}'\n\t\t\t\t\t\t)\n\t\t\t\t\t)",
+        "options": {}
+      },
+      "id": "get-config",
+      "name": "Get Configuration Values",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        400
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "KqeYloYYVZeNChgU",
+          "name": "Airtable"
+        }
+      },
+      "notes": "Using field IDs from the AirtableFields.csv:\n\nfldTZZxBSjsIPt5Kp - Configuration (Primary Field)\nfldPdiJS2Ax7ZU7NX - Name\nfld0ollepo8UiFPb8 - Value\nfldzGwrjnx6cJfDID - Type\nfldhvdK73kBUrdUop - Environment"
+    },
+    {
+      "parameters": {
+        "functionCode": "\n// Process the configuration from Airtable\nconst configs = $input.all();\nconst formattedConfig = {};\n\n// Transform array of config items into a single object\nfor (const item of configs) {\n  const name = item.json.fldPdiJS2Ax7ZU7NX;\n  const value = item.json.fld0ollepo8UiFPb8;\n  const type = item.json.fldzGwrjnx6cJfDID;\n  const env = item.json.fldhvdK73kBUrdUop;\n\n  // Skip configs that don't match our environment (if specified)\n  // Options are: \"Production\", \"Development\", \"Both\"\n  const currentEnv = \"Development\"; // You can change this or make it dynamic\n  if (env && env !== currentEnv && env !== \"Both\") {\n    continue;\n  }\n\n  // Handle different value types\n  if (type === \"Number\") {\n    formattedConfig[name] = Number(value);\n  } else if (type === \"JSON\") {\n    try {\n      formattedConfig[name] = JSON.parse(value);\n    } catch (e) {\n      formattedConfig[name] = value;\n    }\n  } else {\n    formattedConfig[name] = value;\n  }\n}\n\n// Add system information\nif ($('Get Auction System').first().json) {\n  // Add system data if available\n  const system = $('Get Auction System').first().json;\n  formattedConfig.systemName = system.fldWRx9pyJqovdtsf;\n  formattedConfig.systemWebsite = system.fldsoee9Ww6FN3nhq;\n  formattedConfig.systemType = system.fldhOpmEIeRgSIPfT;\n}\n\n// Add county information\nif ($('Get County Information').first().json) {\n  // Add county data if available\n  const county = $('Get County Information').first().json;\n  formattedConfig.countyName = county.fld0hrQJQp8iSIl8a;\n  formattedConfig.countyState = county.fldY2ffjVwpdk9HYw;\n}\n\n// Add auction information\nif ($('Get Auction Details').first().json) {\n  // Add auction data if available\n  const auction = $('Get Auction Details').first().json;\n  formattedConfig.auctionId = auction.fld7zoOS3uQg4tiyh;\n}\n\nreturn { json: formattedConfig };\n"
+      },
+      "id": "format-config",
+      "name": "Format Configuration",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1450,
+        400
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "final-result",
+      "name": "Final Result",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1850,
+        400
+      ],
+      "notes": "This is the final step showing the complete workflow result"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        220,
+        300
+      ],
+      "id": "cc36d96f-112c-49a0-86fd-237a9e709f02",
+      "name": "When clicking ‘Test workflow’"
+    },
+    {
+      "id": "display-config-1742505186760",
+      "name": "Display Config",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1650,
+        400
+      ],
+      "parameters": {
+        "functionCode": "\n// This node shows the formatted configuration without trying to make external API calls\nconst config = $input.item.json;\n\n// Add a timestamp to show this is the new version\nconfig._timestamp = new Date().toISOString();\nconfig._info = \"Configuration is ready to use\";\n\nreturn {\n  json: config\n};\n"
+      }
+    }
+  ],
+  "connections": {
+    "start-node": {
+      "main": [
+        [
+          {
+            "node": "set-sample-id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "set-sample-id": {
+      "main": [
+        [
+          {
+            "node": "get-auction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Sample Auction ID": {
+      "main": [
+        [
+          {
+            "node": "Get Auction Details",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Auction Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get-auction": {
+      "main": [
+        [
+          {
+            "node": "debug-auction",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "get-county",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Auction Details": {
+      "main": [
+        [
+          {
+            "node": "Debug Auction",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get County Information",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Debug Auction",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get County Information",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get-county": {
+      "main": [
+        [
+          {
+            "node": "debug-county",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "get-auction-system",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get County Information": {
+      "main": [
+        [
+          {
+            "node": "Get Auction System",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Debug County",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Auction System",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get-auction-system": {
+      "main": [
+        [
+          {
+            "node": "debug-system",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "get-config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Auction System": {
+      "main": [
+        [
+          {
+            "node": "Get Configuration Values",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Debug System",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Configuration Values",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get-config": {
+      "main": [
+        [
+          {
+            "node": "format-config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Configuration Values": {
+      "main": [
+        [
+          {
+            "node": "Format Configuration",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Format Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "format-config": {
+      "main": [
+        [
+          {
+            "node": "display-config-1742505186760",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Configuration": {
+      "main": [
+        [
+          {
+            "node": "Display Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug Auction": {
+      "main": [
+        [
+          {
+            "node": "Debug County",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug County": {
+      "main": [
+        [
+          {
+            "node": "Debug System",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Test workflow’": {
+      "main": [
+        [
+          {
+            "node": "Set Sample Auction ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "display-config-1742505186760": {
+      "main": [
+        [
+          {
+            "node": "final-result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Display Config": {
+      "main": [
+        [
+          {
+            "node": "Final Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Sample Auction ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "811516ab-2285-4ee9-bbb0-b96c3984e24a",
+  "triggerCount": 0,
+  "shared": [
+    {
+      "createdAt": "2025-03-20T19:34:01.975Z",
+      "updatedAt": "2025-03-20T19:34:01.975Z",
+      "role": "workflow:owner",
+      "workflowId": "SlR4PULINjXn4p11",
+      "projectId": "QlUhVSNSLPtKikKo",
+      "project": {
+        "createdAt": "2025-03-19T16:00:41.778Z",
+        "updatedAt": "2025-03-19T19:32:35.720Z",
+        "id": "QlUhVSNSLPtKikKo",
+        "name": "Scott Bergman <scott.a.bergman@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "projectRelations": [
+          {
+            "createdAt": "2025-03-19T16:00:41.778Z",
+            "updatedAt": "2025-03-19T16:00:41.778Z",
+            "role": "project:personalOwner",
+            "userId": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+            "projectId": "QlUhVSNSLPtKikKo",
+            "user": {
+              "createdAt": "2025-03-19T16:00:41.676Z",
+              "updatedAt": "2025-03-20T16:07:34.434Z",
+              "id": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+              "email": "scott.a.bergman@gmail.com",
+              "firstName": "Scott",
+              "lastName": "Bergman",
+              "personalizationAnswers": null,
+              "settings": {
+                "userActivated": true,
+                "firstSuccessfulWorkflowId": "g2Am3Q41Frh1aJwm",
+                "userActivatedAt": 1742486854413
+              },
+              "role": "global:owner",
+              "disabled": false,
+              "mfaEnabled": false,
+              "isPending": false,
+              "isOwner": true
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "tags": []
+}
