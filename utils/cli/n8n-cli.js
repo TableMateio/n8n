@@ -7,6 +7,8 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const https = require('https');
 const http = require('http');
 const readline = require('readline');
+const fs = require('fs');
+const path = require('path');
 
 // Configuration
 const config = {
@@ -266,6 +268,164 @@ const commands = {
 		return data;
 	},
 
+	// Import/Push a workflow from a JSON file
+	async pushJson(filePath) {
+		if (!filePath) {
+			console.error('Error: JSON file path is required');
+			console.log('Usage: push-json <file-path>');
+			console.log('Example: push-json workflows/routers/auctions.json');
+			return;
+		}
+
+		try {
+			// Read the workflow file
+			console.log(`Reading workflow from ${filePath}...`);
+			const workflowData = fs.readFileSync(path.resolve(filePath), 'utf8');
+			const workflow = JSON.parse(workflowData);
+
+			// Check if workflow has required fields
+			if (!workflow.name) {
+				// If no name is provided, generate one based on the filename
+				const fileName = path.basename(filePath, '.json');
+				const dirName = path.dirname(filePath).split('/').pop();
+
+				// Determine component type from directory structure
+				let componentType = 'UNKNOWN';
+				if (filePath.includes('workflows/operations/')) {
+					componentType = 'OPERATION';
+				} else if (filePath.includes('workflows/processes/')) {
+					componentType = 'PROCESS';
+				} else if (filePath.includes('workflows/routers/')) {
+					componentType = 'ROUTER';
+				}
+
+				workflow.name = `${componentType}: ${fileName}`;
+				console.log(`No workflow name found, using generated name: "${workflow.name}"`);
+			}
+
+			// Ensure other required properties exist
+			workflow.nodes = workflow.nodes || [];
+			workflow.connections = workflow.connections || {};
+			workflow.settings = workflow.settings || { executionOrder: 'v1' };
+
+			// Search for existing workflow with the same name
+			console.log(`Searching for existing workflow with name: "${workflow.name}"...`);
+			const existingWorkflows = await makeN8nRequest('/workflows');
+			const matchingWorkflow = existingWorkflows.data?.find((w) => w.name === workflow.name);
+
+			let result;
+			if (matchingWorkflow) {
+				// Update existing workflow
+				console.log(`Found existing workflow with ID ${matchingWorkflow.id}, updating...`);
+				// We need to preserve the ID and other critical fields
+				const updatedWorkflow = {
+					...matchingWorkflow,
+					nodes: workflow.nodes,
+					connections: workflow.connections,
+					settings: workflow.settings,
+				};
+
+				result = await makeN8nRequest(`/workflows/${matchingWorkflow.id}`, 'PUT', updatedWorkflow);
+				console.log(`Updated workflow "${result.name}" with ID ${result.id}`);
+			} else {
+				// Create a new workflow
+				console.log('No existing workflow found, creating new workflow...');
+				result = await makeN8nRequest('/workflows', 'POST', workflow);
+				console.log(`Created workflow "${result.name}" with ID ${result.id}`);
+			}
+
+			return result;
+		} catch (error) {
+			console.error(`Failed to import workflow: ${error.message}`);
+			if (error.message.includes('ENOENT')) {
+				console.error(`File not found: ${filePath}`);
+			}
+			throw error;
+		}
+	},
+
+	// Import/Push all workflows from a directory
+	async pushAll(directoryPath) {
+		if (!directoryPath) {
+			console.error('Error: Directory path is required');
+			console.log('Usage: push-all <directory-path>');
+			console.log('Example: push-all workflows/routers');
+			return;
+		}
+
+		try {
+			// Check if directory exists
+			const dirPath = path.resolve(directoryPath);
+			if (!fs.existsSync(dirPath)) {
+				console.error(`Directory not found: ${dirPath}`);
+				return;
+			}
+
+			console.log(`Scanning directory: ${dirPath} for JSON workflow files...`);
+
+			// Get all JSON files in the directory and its subdirectories
+			const findJsonFiles = (dir) => {
+				let results = [];
+				const items = fs.readdirSync(dir);
+
+				for (const item of items) {
+					const itemPath = path.join(dir, item);
+					const stat = fs.statSync(itemPath);
+
+					if (stat.isDirectory()) {
+						// Recursively scan subdirectories
+						results = results.concat(findJsonFiles(itemPath));
+					} else if (item.endsWith('.json')) {
+						// Add JSON files to results
+						results.push(itemPath);
+					}
+				}
+
+				return results;
+			};
+
+			const jsonFiles = findJsonFiles(dirPath);
+			console.log(`Found ${jsonFiles.length} JSON files.`);
+
+			if (jsonFiles.length === 0) {
+				console.log('No JSON workflow files found.');
+				return;
+			}
+
+			// Process each file
+			const results = [];
+			for (const file of jsonFiles) {
+				console.log(`\nProcessing file: ${file}`);
+				try {
+					const result = await this.pushJson(file);
+					results.push({ file, success: true, result });
+				} catch (error) {
+					console.error(`Failed to process ${file}: ${error.message}`);
+					results.push({ file, success: false, error: error.message });
+				}
+			}
+
+			// Summarize results
+			console.log('\n--- Import Summary ---');
+			const successCount = results.filter((r) => r.success).length;
+			console.log(`Successfully imported: ${successCount}/${jsonFiles.length} workflows`);
+
+			if (successCount < jsonFiles.length) {
+				console.log('\nFailed imports:');
+				results
+					.filter((r) => !r.success)
+					.forEach((r) => {
+						console.log(`- ${path.basename(r.file)}: ${r.error}`);
+					});
+			}
+
+			return results;
+		} catch (error) {
+			console.error(`Failed to import workflows: ${error.message}`);
+			throw error;
+		}
+	},
+
 	// Help command
 	help() {
 		console.log('Available commands:');
@@ -283,6 +443,12 @@ const commands = {
 		console.log('  delete [id]                               - Delete a workflow');
 		console.log('  activate [id]                             - Activate a workflow');
 		console.log('  deactivate [id]                           - Deactivate a workflow');
+		console.log(
+			'  push-json [filePath]                      - Import/Push a workflow from a JSON file',
+		);
+		console.log(
+			'  push-all [directoryPath]                  - Import/Push all JSON workflows from a directory',
+		);
 		console.log('  exit                                      - Exit the CLI');
 	},
 };
@@ -309,6 +475,10 @@ async function processCommand(command, args) {
 				return await commands.activate(args[0]);
 			case 'deactivate':
 				return await commands.deactivate(args[0]);
+			case 'push-json':
+				return await commands.pushJson(args[0]);
+			case 'push-all':
+				return await commands.pushAll(args[0]);
 			case 'help':
 				return commands.help();
 			case 'exit':
