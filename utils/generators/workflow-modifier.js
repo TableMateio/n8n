@@ -5,7 +5,8 @@
  * operations like adding, removing, and connecting nodes.
  */
 
-const WorkflowManager = require('../../tests/mcp/utilities/workflow-manager');
+// Load WorkflowManager from utilities
+const WorkflowManager = require('../managers/workflow-manager');
 
 class WorkflowModifier {
 	/**

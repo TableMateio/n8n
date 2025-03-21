@@ -5,7 +5,7 @@
  * This consolidates functionality from various specific fix scripts.
  */
 
-const WorkflowManager = require('../../tests/mcp/utilities/workflow-manager');
+const WorkflowManager = require('../managers/workflow-manager');
 const path = require('path');
 const os = require('os');
 

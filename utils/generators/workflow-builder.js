@@ -7,7 +7,7 @@
  */
 
 // Load WorkflowManager from utilities
-const WorkflowManager = require('../../tests/mcp/utilities/workflow-manager');
+const WorkflowManager = require('../managers/workflow-manager');
 const NodeFactory = require('./node-factory');
 const { v4: uuidv4 } = require('uuid');
 
