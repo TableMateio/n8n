@@ -3,8 +3,20 @@
 	"nodes": [
 		{
 			"parameters": {
-				"application": "appWxxzsTHMY0MZHu",
-				"table": "tblteK8SeHqZ8xQxV",
+				"base": {
+					"__rl": true,
+					"value": "appWxxzsTHMY0MZHu",
+					"mode": "list",
+					"cachedResultName": "Tax Surplus",
+					"cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu"
+				},
+				"table": {
+					"__rl": true,
+					"value": "tblteK8SeHqZ8xQxV",
+					"mode": "list",
+					"cachedResultName": "Auctions",
+					"cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tblteK8SeHqZ8xQxV"
+				},
 				"operation": "update",
 				"typeOperation": "recordUpdated"
 			},
@@ -12,7 +24,14 @@
 			"name": "Airtable Trigger",
 			"type": "n8n-nodes-base.airtableTrigger",
 			"typeVersion": 1,
-			"position": [480, 300]
+			"position": [480, 300],
+			"credentials": {
+				"airtableTokenApi": {
+					"id": "KqeYloYYVZeNChgU",
+					"name": "Airtable"
+				}
+			},
+			"notes": "Triggers when an Auction record is updated in Airtable. The workflow will focus specifically on changes to the 'Surplus List' field."
 		},
 		{
 			"parameters": {
@@ -22,7 +41,8 @@
 			"name": "Check Surplus List Field",
 			"type": "n8n-nodes-base.function",
 			"typeVersion": 1,
-			"position": [700, 300]
+			"position": [700, 300],
+			"notes": "Examines the updated record to determine if the 'Surplus List' field was updated with a new attachment. If so, extracts relevant information for processing; otherwise, skips the record."
 		},
 		{
 			"parameters": {
@@ -31,7 +51,9 @@
 			"id": "no_op",
 			"name": "Workflow Complete",
 			"type": "n8n-nodes-base.noOp",
-			"position": [900, 300]
+			"typeVersion": 1,
+			"position": [900, 300],
+			"notes": "Placeholder node for the end of the workflow. In a production implementation, this would be replaced with nodes that process the Surplus List attachment, potentially extracting data and creating related records."
 		}
 	],
 	"pinData": {},
@@ -57,32 +79,16 @@
 					}
 				]
 			]
-		},
-		"Airtable Trigger": {
-			"main": [
-				[
-					{
-						"node": "Check Surplus List Field",
-						"type": "main",
-						"index": 0
-					}
-				]
-			]
-		},
-		"Check Surplus List Field": {
-			"main": [
-				[
-					{
-						"node": "Workflow Complete",
-						"type": "main",
-						"index": 0
-					}
-				]
-			]
 		}
 	},
 	"active": false,
 	"settings": {
 		"executionOrder": "v1"
-	}
+	},
+	"versionId": "1",
+	"meta": {
+		"instanceId": "4dba8cd386ae3944b2fc7eaa8a1fd4bf66504415151768c62f3b476b5123f76d"
+	},
+	"id": "",
+	"tags": []
 }
