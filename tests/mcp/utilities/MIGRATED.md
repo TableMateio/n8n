@@ -16,9 +16,25 @@ This utility provides a comprehensive API for interacting with n8n workflows pro
 - `WorkflowModifier` in `utils/generators/workflow-modifier.js`
 - `WorkflowFixer` in `utils/generators/workflow-fixer.js`
 
-## Other Utilities
+## TypeScript Workflow Manager
 
-Other utilities that may still be in this directory should be evaluated for migration as well. The goal is to move all reusable utilities to the main `utils` directory and its subdirectories.
+The TypeScript version of the workflow manager (`workflow-manager.ts`) has been moved to:
+
+```
+utils/managers/workflow-manager.ts
+```
+
+This version provides the same functionality with stronger type checking and interfaces.
+
+## n8n CLI Tool
+
+The `n8n-cli.js` command-line tool has been moved to:
+
+```
+utils/cli/n8n-cli.js
+```
+
+This tool provides a command-line interface for managing n8n workflows, including listing, creating, updating, and deleting workflows.
 
 ## Current Status
 
