@@ -232,17 +232,11 @@ async function recreateAirtableWorkflow() {
 						__rl: true,
 						value: AIRTABLE_REFERENCE.TABLES.CONFIG,
 						mode: 'list',
-						cachedResultName: 'Configuration',
+						cachedResultName: 'Configurations',
 						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}/${AIRTABLE_REFERENCE.TABLES.CONFIG}`,
 					},
-					// Use field names in filter formula - USING EXPRESSION MODE
-					filterByFormula: `=AND(
-                        {${scopeFieldName}} = 'global',
-                        OR(
-                            {${scopeIdFieldName}} = '',
-                            {${scopeIdFieldName}} = '{{$node["Get Auction System"].json["System Name"]}}'
-                        )
-                    )`,
+					// Updated filter formula to match actual fields
+					filterByFormula: `=OR({System} = '', SEARCH('{{$node["Get Auction System"].json["Name"]}}', {System}))`,
 					options: {},
 				},
 				id: 'get_config',
@@ -257,7 +251,7 @@ async function recreateAirtableWorkflow() {
 					},
 				},
 				notes:
-					'Retrieves configuration values based on global scope and system name. This uses a search operation with a filter formula because we need to find records matching specific criteria.',
+					'Retrieves configuration values that are either global (no system specified) or specific to the current auction system. Using SEARCH to find configurations linked to the current system by name.',
 			},
 			// Debug Config
 			{

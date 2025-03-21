@@ -1,5 +1,9 @@
 {
+  "createdAt": "2025-03-20T23:39:02.030Z",
+  "updatedAt": "2025-03-21T01:47:34.239Z",
+  "id": "0bRCD0G5JuGo9GFZ",
   "name": "Dynamic Airtable Configuration (Fixed)",
+  "active": false,
   "nodes": [
     {
       "parameters": {},
@@ -105,8 +109,8 @@
           "cachedResultName": "Counties",
           "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tblgJ8IbhYrpIqXq4"
         },
-        "id": "={{$node[\"Get Auction Details\"].json.County[0]}}",
-        "options": {}
+        "options": {},
+        "id": "={{$node[\"Get Auction Details\"].json.County[0]}}"
       },
       "id": "get_county",
       "name": "Get County Information",
@@ -155,8 +159,8 @@
           "cachedResultName": "Auction Systems",
           "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tbl3tOZ5GZNBr1dV1"
         },
-        "id": "={{$node[\"Get County Information\"].json[\"Auction System\"][0]}}",
-        "options": {}
+        "options": {},
+        "id": "={{$node[\"Get County Information\"].json[\"Auction System\"][0]}}"
       },
       "id": "get_system",
       "name": "Get Auction System",
@@ -202,7 +206,7 @@
           "__rl": true,
           "value": "tblLq0PQKTj9XsYnr",
           "mode": "list",
-          "cachedResultName": "Configurations",
+          "cachedResultName": "Configuration",
           "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tblLq0PQKTj9XsYnr"
         },
         "filterByFormula": "=OR({System} = '', SEARCH('{{$node[\"Get Auction System\"].json[\"Name\"]}}', {System}))",
@@ -323,13 +327,55 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "active": false,
-  "versionId": "a4173ad0-e871-48f4-b57a-c6f07f578fc3",
-  "id": "fAav5YFbgdUT1icR",
   "staticData": null,
   "meta": null,
   "pinData": null,
-  "createdAt": "2025-03-21T01:58:33.083Z",
-  "updatedAt": "2025-03-21T01:58:33.083Z",
-  "triggerCount": 0
+  "versionId": "3ef142cc-7414-4c00-8ed0-4b84a085482f",
+  "triggerCount": 0,
+  "shared": [
+    {
+      "createdAt": "2025-03-20T23:39:02.035Z",
+      "updatedAt": "2025-03-20T23:39:02.035Z",
+      "role": "workflow:owner",
+      "workflowId": "0bRCD0G5JuGo9GFZ",
+      "projectId": "QlUhVSNSLPtKikKo",
+      "project": {
+        "createdAt": "2025-03-19T16:00:41.778Z",
+        "updatedAt": "2025-03-19T19:32:35.720Z",
+        "id": "QlUhVSNSLPtKikKo",
+        "name": "Scott Bergman <scott.a.bergman@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "projectRelations": [
+          {
+            "createdAt": "2025-03-19T16:00:41.778Z",
+            "updatedAt": "2025-03-19T16:00:41.778Z",
+            "role": "project:personalOwner",
+            "userId": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+            "projectId": "QlUhVSNSLPtKikKo",
+            "user": {
+              "createdAt": "2025-03-19T16:00:41.676Z",
+              "updatedAt": "2025-03-20T16:07:34.434Z",
+              "id": "3ca9230f-a05d-4864-8b9e-79e9427ae37b",
+              "email": "scott.a.bergman@gmail.com",
+              "firstName": "Scott",
+              "lastName": "Bergman",
+              "personalizationAnswers": null,
+              "settings": {
+                "userActivated": true,
+                "firstSuccessfulWorkflowId": "g2Am3Q41Frh1aJwm",
+                "userActivatedAt": 1742486854413
+              },
+              "role": "global:owner",
+              "disabled": false,
+              "mfaEnabled": false,
+              "isPending": false,
+              "isOwner": true
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "tags": []
 }
