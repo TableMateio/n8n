@@ -2,6 +2,11 @@
 
 This document details the architecture of our n8n-based Tax Surplus Recovery System, focusing on code organization, component structure, and implementation patterns.
 
+> **Related Documentation**:
+> - [STRATEGY.md](../STRATEGY.md) - Overall implementation strategy
+> - [DECISION_GUIDE.md](./DECISION_GUIDE.md) - Framework for architectural decisions
+> - [N8N-WORKFLOW-ARCHITECTURE.md](../workflow-architecture/N8N-WORKFLOW-ARCHITECTURE.md) - n8n workflow architecture implementation
+
 ## 1. Component Structure
 
 Our system is organized into four primary component types:

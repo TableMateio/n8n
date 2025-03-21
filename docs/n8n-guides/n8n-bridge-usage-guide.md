@@ -3,6 +3,8 @@
 ## Setup Summary
 We've successfully configured the N8N Bridge in Cursor, allowing us to interact with our n8n instance directly through Cursor's AI interface. Here's how we did it:
 
+For more info, go to the original github page: https://github.com/illuminaresolutions/n8n-mcp-server/blob/main/README.md
+
 1. Installed the n8n-mcp-server package globally:
    ```bash
    npm install -g @illuminaresolutions/n8n-mcp-server
