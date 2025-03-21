@@ -164,6 +164,46 @@ const commands = {
 		return data;
 	},
 
+	// Create a new workflow with standardized naming convention
+	async createNamed(componentType, entity, componentName) {
+		// Validate required parameters
+		if (!componentType || !entity) {
+			console.error('Error: Component type and entity are required');
+			console.log('Usage: create-named <componentType> <entity> [componentName]');
+			console.log('Example: create-named OPERATION Airtable "Search Records"');
+			return;
+		}
+
+		// Validate component type
+		const validTypes = ['OPERATION', 'PROCESS', 'ROUTER'];
+		if (!validTypes.includes(componentType.toUpperCase())) {
+			console.error(`Error: Invalid component type: ${componentType}`);
+			console.log(`Valid component types: ${validTypes.join(', ')}`);
+			return;
+		}
+
+		// Format the workflow name according to the convention
+		let name = `${componentType.toUpperCase()}: ${entity}`;
+		if (componentName) {
+			name += ` - ${componentName}`;
+		}
+
+		// Create the workflow with the formatted name
+		const workflowData = {
+			name,
+			nodes: [],
+			connections: {},
+			settings: {
+				executionOrder: 'v1',
+			},
+		};
+
+		const data = await makeN8nRequest('/workflows', 'POST', workflowData);
+		console.log(`Created workflow "${data.name}" with ID ${data.id}`);
+
+		return data;
+	},
+
 	// Update a workflow
 	async update(id, updates) {
 		if (!id) {
@@ -229,15 +269,21 @@ const commands = {
 	// Help command
 	help() {
 		console.log('Available commands:');
-		console.log('  test                          - Test connection to n8n');
-		console.log('  list                          - List all workflows');
-		console.log('  get [id]                      - Get workflow details by ID');
-		console.log('  create [name]                 - Create a new workflow');
-		console.log('  update [id] [name]            - Update workflow name');
-		console.log('  delete [id]                   - Delete a workflow');
-		console.log('  activate [id]                 - Activate a workflow');
-		console.log('  deactivate [id]               - Deactivate a workflow');
-		console.log('  exit                          - Exit the CLI');
+		console.log('  test                                      - Test connection to n8n');
+		console.log('  list                                      - List all workflows');
+		console.log('  get [id]                                  - Get workflow details by ID');
+		console.log('  create [name]                             - Create a new workflow');
+		console.log(
+			'  create-named [componentType] [entity] [componentName] - Create a workflow with standard naming',
+		);
+		console.log(
+			'                                              Example: create-named OPERATION Airtable "Search Records"',
+		);
+		console.log('  update [id] [name]                        - Update workflow name');
+		console.log('  delete [id]                               - Delete a workflow');
+		console.log('  activate [id]                             - Activate a workflow');
+		console.log('  deactivate [id]                           - Deactivate a workflow');
+		console.log('  exit                                      - Exit the CLI');
 	},
 };
 
@@ -253,6 +299,8 @@ async function processCommand(command, args) {
 				return await commands.get(args[0]);
 			case 'create':
 				return await commands.create(args[0]);
+			case 'create-named':
+				return await commands.createNamed(args[0], args[1], args[2]);
 			case 'update':
 				return await commands.update(args[0], { name: args[1] });
 			case 'delete':

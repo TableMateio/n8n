@@ -14,7 +14,7 @@ Foreclosure processes handle business workflows around foreclosures including:
 ## Directory Structure
 
 ```
-workflow-templates/processes/foreclosures/
+workflows/processes/foreclosures/
 ├── README.md                    # This file
 ├── enrich-foreclosure.js        # Process to add additional data to foreclosures
 ├── calculate-surplus.js         # Process to determine potential surplus

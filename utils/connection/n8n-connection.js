@@ -40,6 +40,40 @@ class N8nConnectionManager extends EventEmitter {
 	}
 
 	/**
+	 * Initialize the connection to n8n
+	 *
+	 * @param {Object} options Optional connection options to override defaults
+	 * @returns {Promise<boolean>} Whether the connection was successful
+	 */
+	async initialize(options = {}) {
+		// Update connection options if provided
+		if (options.url) {
+			this.url = options.url;
+		}
+		if (options.apiKey) {
+			this.apiKey = options.apiKey;
+		}
+		if (options.allowSelfSigned !== undefined) {
+			this.allowSelfSigned = options.allowSelfSigned;
+			if (this.allowSelfSigned) {
+				process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+			}
+		}
+
+		// Generate a client ID if we don't have one
+		this.clientId = `n8n-${Date.now()}`;
+
+		// Test the connection
+		try {
+			await this.testConnection();
+			return true;
+		} catch (error) {
+			console.error('Failed to initialize n8n connection:', error.message);
+			return false;
+		}
+	}
+
+	/**
 	 * Make a direct HTTP/HTTPS request to the n8n API
 	 *
 	 * @param {string} path The API path
@@ -251,6 +285,44 @@ class N8nConnectionManager extends EventEmitter {
 	}
 
 	/**
+	 * Create a new workflow with standardized naming convention
+	 * Format: [COMPONENT]: [Entity] - [Optional component name]
+	 *
+	 * @param {string} componentType The component type (OPERATION, PROCESS, ROUTER)
+	 * @param {string} entity The entity name
+	 * @param {string} componentName Optional component name
+	 * @param {Array} nodes Workflow nodes
+	 * @param {Object} connections Node connections
+	 * @param {Object} options Additional workflow options
+	 * @returns {Promise<Object>} Created workflow
+	 */
+	async createNamedWorkflow(
+		componentType,
+		entity,
+		componentName,
+		nodes = [],
+		connections = {},
+		options = {},
+	) {
+		// Validate component type
+		const validTypes = ['OPERATION', 'PROCESS', 'ROUTER'];
+		if (!validTypes.includes(componentType.toUpperCase())) {
+			throw new Error(
+				`Invalid component type: ${componentType}. Must be one of: ${validTypes.join(', ')}`,
+			);
+		}
+
+		// Format the workflow name according to the convention
+		let name = `${componentType.toUpperCase()}: ${entity}`;
+		if (componentName) {
+			name += ` - ${componentName}`;
+		}
+
+		// Create the workflow with the formatted name
+		return await this.createWorkflow(name, nodes, connections, options);
+	}
+
+	/**
 	 * Handle a JSON-RPC request
 	 *
 	 * @param {Object} request JSON-RPC request object
@@ -273,6 +345,8 @@ class N8nConnectionManager extends EventEmitter {
 					return await this.jsonRpcGetWorkflow(id, params);
 				case 'create-workflow':
 					return await this.jsonRpcCreateWorkflow(id, params);
+				case 'create-named-workflow':
+					return await this.jsonRpcCreateNamedWorkflow(id, params);
 				case 'update-workflow':
 					return await this.jsonRpcUpdateWorkflow(id, params);
 				case 'delete-workflow':
@@ -412,6 +486,51 @@ class N8nConnectionManager extends EventEmitter {
 			};
 		} catch (error) {
 			return this.createJsonRpcError(id, -32603, `Failed to create workflow: ${error.message}`);
+		}
+	}
+
+	/**
+	 * JSON-RPC create named workflow
+	 *
+	 * @private
+	 * @param {string|number} id Request ID
+	 * @param {Object} params Request parameters
+	 * @returns {Promise<Object>} JSON-RPC response
+	 */
+	async jsonRpcCreateNamedWorkflow(id, params) {
+		if (!this.validateClientId(params.clientId)) {
+			return this.createJsonRpcError(id, -32002, 'Invalid client ID');
+		}
+
+		if (!params.componentType || !params.entity) {
+			return this.createJsonRpcError(
+				id,
+				-32602,
+				'Invalid params: componentType and entity are required',
+			);
+		}
+
+		try {
+			const workflow = await this.createNamedWorkflow(
+				params.componentType,
+				params.entity,
+				params.componentName,
+				params.nodes || [],
+				params.connections || {},
+				params.options || {},
+			);
+
+			return {
+				jsonrpc: '2.0',
+				id,
+				result: { workflow },
+			};
+		} catch (error) {
+			return this.createJsonRpcError(
+				id,
+				-32603,
+				`Failed to create named workflow: ${error.message}`,
+			);
 		}
 	}
 

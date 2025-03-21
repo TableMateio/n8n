@@ -1,67 +1,85 @@
-# Workflow Templates
+# n8n Workflow Templates
 
-This directory contains reusable workflow templates organized by abstraction level, following the architecture principles outlined in the [N8N-WORKFLOW-ARCHITECTURE.md](../docs/workflow-architecture/N8N-WORKFLOW-ARCHITECTURE.md) document.
+This directory contains reusable workflow templates organized by their functional purpose in our automation ecosystem.
+
+## Workflow Naming Convention
+
+All workflows should follow our standardized naming convention:
+
+```
+[COMPONENT]: [Entity] - [Optional component name]
+```
+
+### Component Types
+
+- **OPERATION**: Reusable, atomic actions that perform a specific function (e.g., API calls, data transformations)
+- **PROCESS**: Multi-step business processes that orchestrate multiple operations
+- **ROUTER**: Entry points that detect various events and route them to appropriate processes
+
+### Examples
+
+- `OPERATION: Airtable - Search Records`
+- `PROCESS: Foreclosure - Enrich`
+- `ROUTER: Auction`
 
 ## Directory Structure
 
 ```
-/workflow-templates
-  /triggers         # Entry points/routers organized by source type
-    /airtable       # Airtable record change triggers
-    /schedule       # Time-based triggers
-    /webhook        # External webhook triggers
-  /processes        # Business logic flows organized by domain
-    /auction        # Auction-related processes
-    /foreclosure    # Foreclosure-related processes
-    /contact        # Contact-related processes
-  /operations       # Reusable, atomic operations
-    /web            # Web interaction operations
-    /airtable       # Airtable operations
-    /data           # Data operations
+workflows/
+├── operations/         # Reusable, atomic workflow operations
+│   ├── airtable/       # Airtable-specific operations
+│   ├── data/           # Data processing operations
+│   └── ...
+├── processes/          # Multi-step business processes
+│   ├── foreclosure/    # Foreclosure-related processes
+│   └── ...
+└── routers/            # Event detection and routing workflows
+    ├── airtable/       # Airtable-triggered routers
+    └── ...
 ```
 
-## Usage Guide
+## Using the CLI for Creating Standardized Workflows
 
-### Triggers
+We've added a helper function to our CLI tools to create workflows with standardized names:
 
-Triggers are entry points that respond to external events and route to appropriate processes:
-- Respond to a specific event type (Airtable changes, schedules, webhooks)
-- Contain minimal logic, primarily for routing
-- Determine which process to call based on event conditions
-- Pass contextual data to the target process
+```bash
+node utils/cli/n8n-cli.js create-named <componentType> <entity> [component-name]
+```
 
-### Processes
+Example:
+```bash
+node utils/cli/n8n-cli.js create-named OPERATION Airtable "Search Records"
+# Creates a workflow named "OPERATION: Airtable - Search Records"
+```
 
-Processes represent business logic flows that accomplish specific goals within a domain:
-- Represent a complete business process
-- Organized by domain (auction, foreclosure, contact)
-- Composed of multiple operations
-- Handle state and error management
-- Focus on WHAT to do, not HOW to do it
+## Best Practices
 
-### Operations
+1. **Consistency**: Always use the standardized naming convention for all workflows
+2. **Modularity**: Operations should be small, focused, and reusable
+3. **Documentation**: Include descriptive node names and comments in workflows
+4. **Error Handling**: Include error handling nodes in all workflows
+5. **Testing**: Test workflows with various input scenarios before production use
 
-Operations are reusable, atomic functions that perform specific tasks and adapt to their environment:
-- Perform a single logical operation
-- Adapt implementation based on environment type
-- Have clear input/output contracts
-- Are agnostic to specific entities or business processes
-- Focus on HOW to do something, not WHAT to do
+## Programmatic Workflow Creation
 
-## Creating New Templates
+You can also create standardized workflows programmatically using the `N8nConnectionManager`:
 
-When creating new templates:
+```javascript
+const { N8nConnectionManager } = require('../utils/connection/n8n-connection');
 
-1. Identify the appropriate abstraction level (trigger, process, or operation)
-2. Place the template in the correct subdirectory
-3. Use the NodeBuilder and other utilities in the utils directory
-4. Follow the pattern established in the examples
-5. Export a consistent interface for integration with the WorkflowManager
+async function createWorkflow() {
+  const n8n = new N8nConnectionManager();
+  await n8n.initialize();
 
-## Examples
+  const workflow = await n8n.createNamedWorkflow(
+    'OPERATION',
+    'Airtable',
+    'Search Records',
+    [...nodes],
+    {...connections},
+    {...options}
+  );
 
-Each directory contains examples to help you understand the patterns:
-
-- **Triggers**: Example triggers for Airtable changes, scheduled events, and webhooks
-- **Processes**: Example processes for each domain
-- **Operations**: Reusable operations with different environment implementations
+  console.log(`Created workflow: ${workflow.name} (${workflow.id})`);
+}
+```

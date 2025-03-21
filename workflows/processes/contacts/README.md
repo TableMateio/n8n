@@ -14,7 +14,7 @@ Contact processes handle business workflows around contacts including:
 ## Directory Structure
 
 ```
-workflow-templates/processes/contacts/
+workflows/processes/contacts/
 ├── README.md                    # This file
 ├── enrich-contact.js            # Process to add additional data to contacts
 ├── generate-letter.js           # Process to create outreach materials

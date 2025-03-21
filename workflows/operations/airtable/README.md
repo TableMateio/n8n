@@ -1,45 +1,108 @@
 # Airtable Operations
 
-This directory contains reusable workflow operations for interacting with Airtable.
+This directory contains reusable operations for interacting with Airtable.
 
-## Purpose
+## Available Operations
 
-Airtable operations provide standardized ways to:
-- Retrieve records from Airtable
-- Update records in Airtable
-- Create new records
-- Search for records using field names or IDs
-- Handle linked records properly
-- Manage field mappings
+- `create-record.js` - Create records in Airtable tables
+- `get-config-values.js` - Retrieve configuration values from Airtable
+- `get-linked-record.js` - Retrieve records linked to another record
+- `search-records.js` - Search for records with advanced filtering
+- `test-credentials.js` - Test Airtable credentials and permissions
 
-These operations abstract the complexity of Airtable interactions and provide a consistent interface for higher-level processes.
+## Using These Operations
 
-## Directory Structure
+You can call these operations from other workflows by using the Execute Workflow node:
 
+```javascript
+const getConfigNode = NodeBuilder.createExecuteWorkflowNode({
+  id: 'get_config',
+  name: 'Get Configuration',
+  parameters: {
+    workflowId: '={{ $getWorkflowByName("operations/airtable/get-config-values") }}',
+    inputData: {
+      configType: 'system',
+      countyName: 'Example County'
+    }
+  }
+});
 ```
-workflow-templates/operations/airtable/
-├── README.md                      # This file
-├── get-record.js                  # Operation to retrieve a single record
-├── search-records.js              # Operation to search for records with proper field handling
-├── update-record.js               # Operation to update a record
-├── create-record.js               # Operation to create a new record
-├── handle-linked-record.js        # Operation to properly handle linked record fields
-└── ...
+
+## Common Patterns
+
+### Error Handling
+
+All operations include standardized error handling and will return error information in a consistent format:
+
+```json
+{
+  "success": false,
+  "error": {
+    "message": "Table not found: InvalidTable",
+    "code": "NOT_FOUND",
+    "details": { ... }
+  }
+}
 ```
 
-## Implementation Notes
+### Response Format
 
-- Operations should be atomic, focusing on a specific task
-- They should handle edge cases like field name vs ID issues
-- Each operation should adapt based on the environment and system configuration
-- Error handling should be thorough with clear error messages
-- Operations should be composable and have consistent interfaces
+Successful responses follow a consistent pattern:
 
-## Common Issues Addressed
+```json
+{
+  "success": true,
+  "data": [ ... ],
+  "count": 5,
+  "source": "workflows/operations/airtable/search-records"
+}
+```
 
-These operations help address common Airtable integration issues including:
-- Field name vs field ID mismatches in filter formulas
-- Linked field resolution challenges
-- Authentication and credential validation
-- Field format inconsistencies
-- Pagination handling for large result sets
+## Input Documentation
+
+Each operation has specific input requirements, documented at the top of each file and in this README.
+
+### create-record.js
+
+**Required Inputs:**
+- `table` (string): The name of the Airtable table
+- `fields` (object): The fields to set on the new record
+
+**Optional Inputs:**
+- `typecast` (boolean): Whether to typecast field values (default: true)
+
+### get-config-values.js
+
+**Required Inputs:**
+- `configType` (string): The type of configuration to retrieve
+
+**Optional Inputs:**
+- `countyName` (string): Filter configuration by county
+
+### get-linked-record.js
+
+**Required Inputs:**
+- `table` (string): The Airtable table containing the linked record
+- `recordId` (string): The ID of the linked record to retrieve
+
+**Optional Inputs:**
+- `fields` (array): Specific fields to retrieve
+
+### search-records.js
+
+**Required Inputs:**
+- `table` (string): The Airtable table to search
+
+**Optional Inputs:**
+- `filterByFormula` (string): Airtable formula for filtering
+- `view` (string): Specific view to use
+- `maxRecords` (number): Maximum records to return
+- `fields` (array): Specific fields to retrieve
+
+### test-credentials.js
+
+**Required Inputs:**
+- `table` (string): The table to check permissions on
+
+**Optional Inputs:**
+- `testWrite` (boolean): Whether to test write permissions (creates and deletes a test record)

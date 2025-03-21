@@ -14,7 +14,7 @@ Auction processes handle business workflows around auctions including:
 ## Directory Structure
 
 ```
-workflow-templates/processes/auctions/
+workflows/processes/auctions/
 ├── README.md                    # This file
 ├── discover-auctions.js         # Process to find new auctions
 ├── monitor-auction.js           # Process to track auction status changes

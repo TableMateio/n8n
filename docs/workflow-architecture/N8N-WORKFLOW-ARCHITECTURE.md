@@ -16,8 +16,8 @@ Our architecture is designed around these key principles:
 
 ```
 /n8n
-  /workflow-templates   # All workflow components in one main folder
-    /triggers           # Entry points/routers organized by source type
+  /workflows             # All workflow components in one main folder
+    /routers            # Entry points/routers organized by source type
       /airtable         # Airtable record change triggers
         foreclosure-created.js
         contact-updated.js
@@ -61,11 +61,15 @@ Our architecture is designed around these key principles:
       workflow-manager.js # Get/update/create workflows
     /testing            # Testing utilities
       flow-tester.js    # Test workflows
+    /cli                # CLI tools
+      n8n-cli.js        # Command-line interface for n8n
+    /connection         # Connection utilities
+      n8n-connection.js # Connection manager for n8n API
 
   /examples             # Working examples of common patterns
-    switch-workflow.js  # Example with branching logic
-    configurable-workflow.js # Example with external configuration
-    reusable-workflow.js # Example of workflow calling another workflow
+    /workflows          # Exported workflow examples
+      switch-workflow.json  # Example with branching logic
+      configurable-workflow.json # Example with external configuration
 
   /config               # Configuration
     environments.js     # Environment definitions
@@ -74,9 +78,9 @@ Our architecture is designed around these key principles:
 
 ## Component Types
 
-### 1. Triggers
+### 1. Routers
 
-Triggers are entry points that respond to external events and route to appropriate processes.
+Routers are entry points that respond to external events and route to appropriate processes.
 
 **Characteristics**:
 - Respond to a specific event type (Airtable changes, schedules, webhooks)
@@ -84,7 +88,7 @@ Triggers are entry points that respond to external events and route to appropria
 - Determine which process to call based on event conditions
 - Pass contextual data to the target process
 
-**Example**: `workflow-templates/triggers/airtable/foreclosure-created.js`
+**Example**: `workflows/routers/airtable/foreclosure-created.js`
 ```javascript
 // When a new foreclosure record is created in Airtable
 // Route to appropriate process based on status
@@ -154,7 +158,7 @@ Processes represent business logic flows that accomplish specific goals within a
 - Handle state and error management
 - Focus on WHAT to do, not HOW to do it
 
-**Example**: `workflow-templates/processes/foreclosure/enrich-foreclosure.js`
+**Example**: `workflows/processes/foreclosure/enrich-foreclosure.js`
 ```javascript
 // Process to enrich a foreclosure record with property data
 
@@ -252,7 +256,7 @@ Operations are reusable, atomic functions that perform specific tasks and adapt 
 - Are agnostic to specific entities or business processes
 - Focus on HOW to do something, not WHAT to do
 
-**Example**: `workflow-templates/operations/web/scrape.js`
+**Example**: `workflows/operations/web/scrape.js`
 ```javascript
 // Adaptive scrape operation that works in different environments
 
@@ -432,13 +436,13 @@ module.exports = NodeBuilder;
 
 ## Component Interaction Patterns
 
-### Pattern 1: Trigger to Process
+### Pattern 1: Router to Process
 
-The standard flow from trigger to process:
+The standard flow from router to process:
 
-1. Trigger detects an event
-2. Trigger evaluates conditions
-3. Trigger calls appropriate process with context
+1. Router detects an event
+2. Router evaluates conditions
+3. Router calls appropriate process with context
 4. Process executes business logic
 5. Process returns results
 
@@ -464,7 +468,7 @@ How operations adapt to environments:
 
 ## Decision Guidelines
 
-### When to Create a Trigger
+### When to Create a Router
 
 - Does it respond to an external event?
 - Is it an entry point to the system?
@@ -541,6 +545,26 @@ To ensure proper version control:
 2. **Commit with Related Code**: Keep workflow JSON and generation code together
 3. **Use Semantic Versioning**: For workflow templates
 4. **Include Version in Name**: For deployed workflows
+
+## Workflow Naming Convention
+
+Our workflows follow a standardized naming convention:
+
+```
+[COMPONENT]: [Entity] - [Optional component name]
+```
+
+**Component Types**:
+- **OPERATION**: Reusable, atomic actions that perform a specific function
+- **PROCESS**: Multi-step business processes that orchestrate multiple operations
+- **ROUTER**: Entry points that detect events and route them to processes
+
+**Examples**:
+- `OPERATION: Airtable - Search Records`
+- `PROCESS: Foreclosure - Enrich`
+- `ROUTER: Auction`
+
+This naming convention is enforced through our CLI tools and connection utilities.
 
 ## Conclusion
 
