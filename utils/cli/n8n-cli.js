@@ -317,12 +317,16 @@ const commands = {
 			if (matchingWorkflow) {
 				// Update existing workflow
 				console.log(`Found existing workflow with ID ${matchingWorkflow.id}, updating...`);
-				// We need to preserve the ID and other critical fields
+
+				// Create a clean update object with only the fields that n8n API accepts
 				const updatedWorkflow = {
-					...matchingWorkflow,
+					name: workflow.name,
 					nodes: workflow.nodes,
 					connections: workflow.connections,
 					settings: workflow.settings,
+					// Preserve these fields from the existing workflow if they exist
+					active: matchingWorkflow.active,
+					// Don't include other fields that might cause issues with the API
 				};
 
 				result = await makeN8nRequest(`/workflows/${matchingWorkflow.id}`, 'PUT', updatedWorkflow);
@@ -330,7 +334,17 @@ const commands = {
 			} else {
 				// Create a new workflow
 				console.log('No existing workflow found, creating new workflow...');
-				result = await makeN8nRequest('/workflows', 'POST', workflow);
+
+				// Create a clean create object with only the fields that n8n API accepts
+				const newWorkflow = {
+					name: workflow.name,
+					nodes: workflow.nodes,
+					connections: workflow.connections,
+					settings: workflow.settings,
+					// Don't include any extra fields
+				};
+
+				result = await makeN8nRequest('/workflows', 'POST', newWorkflow);
 				console.log(`Created workflow "${result.name}" with ID ${result.id}`);
 			}
 
