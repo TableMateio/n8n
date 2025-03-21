@@ -1,6 +1,6 @@
 {
   "createdAt": "2025-03-20T23:39:02.030Z",
-  "updatedAt": "2025-03-21T01:47:34.239Z",
+  "updatedAt": "2025-03-21T01:58:26.216Z",
   "id": "0bRCD0G5JuGo9GFZ",
   "name": "Dynamic Airtable Configuration (Fixed)",
   "active": false,
@@ -209,7 +209,7 @@
           "cachedResultName": "Configuration",
           "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tblLq0PQKTj9XsYnr"
         },
-        "filterByFormula": "=OR({System} = '', SEARCH('{{$node[\"Get Auction System\"].json[\"Name\"]}}', {System}))",
+        "filterByFormula": "={System}='{{$node[\"Get Auction System\"].json.System}}'",
         "options": {}
       },
       "id": "get_config",
@@ -226,7 +226,7 @@
           "name": "Airtable"
         }
       },
-      "notes": "Retrieves configuration values that are either global (no system specified) or specific to the current auction system. Using SEARCH to find configurations linked to the current system by name."
+      "notes": "Retrieves configuration values specific to the current auction system by matching the System field. The results include Name and Value fields that can be used for configuration settings."
     },
     {
       "parameters": {},
@@ -330,7 +330,7 @@
   "staticData": null,
   "meta": null,
   "pinData": null,
-  "versionId": "3ef142cc-7414-4c00-8ed0-4b84a085482f",
+  "versionId": "251daf45-1c8f-4636-a33a-b446e9da32cb",
   "triggerCount": 0,
   "shared": [
     {

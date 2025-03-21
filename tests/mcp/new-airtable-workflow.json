@@ -205,7 +205,7 @@
           "cachedResultName": "Configurations",
           "cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tblLq0PQKTj9XsYnr"
         },
-        "filterByFormula": "=OR({System} = '', SEARCH('{{$node[\"Get Auction System\"].json[\"Name\"]}}', {System}))",
+        "filterByFormula": "={System}='{{$node[\"Get Auction System\"].json.System}}'",
         "options": {}
       },
       "id": "get_config",
@@ -222,7 +222,7 @@
           "name": "Airtable"
         }
       },
-      "notes": "Retrieves configuration values that are either global (no system specified) or specific to the current auction system. Using SEARCH to find configurations linked to the current system by name."
+      "notes": "Retrieves configuration values specific to the current auction system by matching the System field. The results include Name and Value fields that can be used for configuration settings."
     },
     {
       "parameters": {},
@@ -324,12 +324,12 @@
     "executionOrder": "v1"
   },
   "active": false,
-  "versionId": "a4173ad0-e871-48f4-b57a-c6f07f578fc3",
-  "id": "fAav5YFbgdUT1icR",
+  "versionId": "2ecead4b-3bff-4c62-a0f9-3d54f1dd5f79",
+  "id": "w06fDkAKCltEgSfA",
   "staticData": null,
   "meta": null,
   "pinData": null,
-  "createdAt": "2025-03-21T01:58:33.083Z",
-  "updatedAt": "2025-03-21T01:58:33.083Z",
+  "createdAt": "2025-03-21T03:14:27.841Z",
+  "updatedAt": "2025-03-21T03:14:27.841Z",
   "triggerCount": 0
 }

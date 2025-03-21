@@ -112,9 +112,9 @@ async function updateAirtableFiltering() {
 					updated = true;
 				} else if (node.name === 'Get Configuration Values') {
 					// Use field names in filter formula with EXPRESSION MODE
-					node.parameters.filterByFormula = `=OR({System} = '', SEARCH('{{$node["Get Auction System"].json["Name"]}}', {System}))`;
+					node.parameters.filterByFormula = `={System}='{{$node["Get Auction System"].json.System}}'`;
 					node.notes =
-						'Retrieves configuration values that are either global (no system specified) or specific to the current auction system. Using SEARCH to find configurations linked to the current system by name.';
+						'Retrieves configuration values specific to the current auction system by matching the System field. The results include Name and Value fields that can be used for configuration settings.';
 					updated = true;
 				}
 

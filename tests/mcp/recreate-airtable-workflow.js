@@ -235,8 +235,8 @@ async function recreateAirtableWorkflow() {
 						cachedResultName: 'Configurations',
 						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}/${AIRTABLE_REFERENCE.TABLES.CONFIG}`,
 					},
-					// Updated filter formula to match actual fields
-					filterByFormula: `=OR({System} = '', SEARCH('{{$node["Get Auction System"].json["Name"]}}', {System}))`,
+					// Using the working filter formula
+					filterByFormula: `={System}='{{$node["Get Auction System"].json.System}}'`,
 					options: {},
 				},
 				id: 'get_config',
@@ -251,7 +251,7 @@ async function recreateAirtableWorkflow() {
 					},
 				},
 				notes:
-					'Retrieves configuration values that are either global (no system specified) or specific to the current auction system. Using SEARCH to find configurations linked to the current system by name.',
+					'Retrieves configuration values specific to the current auction system by matching the System field. The results include Name and Value fields that can be used for configuration settings.',
 			},
 			// Debug Config
 			{
