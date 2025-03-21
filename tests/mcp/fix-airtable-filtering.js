@@ -89,16 +89,26 @@ async function updateAirtableFiltering() {
 						'Using field names from the Airtable UI for formulas instead of IDs:\n\nAuction - The primary field\nCounty - The county field';
 					updated = true;
 				} else if (node.name === 'Get County Information') {
-					// Use field name in filter formula with EXPRESSION MODE
-					node.parameters.filterByFormula = `={${countyFieldName}} = '{{$node["Get Auction Details"].json["fields"]["${auctionCountyFieldName}"]}}' `;
+					// Use "get" operation with record ID instead of search
+					node.parameters.operation = 'get';
+					delete node.parameters.filterByFormula; // Remove filter formula as it's not needed
+
+					// Add record ID parameter
+					node.parameters.id = '={{$node["Get Auction Details"].json.County[0]}}';
+
 					node.notes =
-						'Retrieves county information based on the auction county field. Using field names in the filter formula.';
+						'Retrieves county information using the record ID from the linked County field in the Auction table. Using the "get" operation because we have the record ID directly.';
 					updated = true;
 				} else if (node.name === 'Get Auction System') {
-					// Use field name in filter formula with EXPRESSION MODE
-					node.parameters.filterByFormula = `={${systemFieldName}} = '{{$node["Get County Information"].json["fields"]["${countySystemFieldName}"]}}' `;
+					// Use "get" operation with record ID instead of search
+					node.parameters.operation = 'get';
+					delete node.parameters.filterByFormula; // Remove filter formula as it's not needed
+
+					// Add record ID parameter
+					node.parameters.id = '={{$node["Get County Information"].json["Auction System"][0]}}';
+
 					node.notes =
-						'Retrieves system information based on the county system field. Using field names in the filter formula.';
+						'Retrieves system information using the record ID from the linked Auction System field in the County record. Using the "get" operation because we have the record ID directly.';
 					updated = true;
 				} else if (node.name === 'Get Configuration Values') {
 					// Use field names in filter formula with EXPRESSION MODE
@@ -106,11 +116,11 @@ async function updateAirtableFiltering() {
                         {${scopeFieldName}} = 'global',
                         OR(
                             {${scopeIdFieldName}} = '',
-                            {${scopeIdFieldName}} = '{{$node["Get Auction System"].json["fields"]["${systemFieldName}"]}}'
+                            {${scopeIdFieldName}} = '{{$node["Get Auction System"].json["System Name"]}}'
                         )
                     )`;
 					node.notes =
-						'Retrieves configuration values based on global scope and system name. Using field names in the filter formula.';
+						'Retrieves configuration values based on global scope and system name. This uses a search operation with a filter formula because we need to find records matching specific criteria.';
 					updated = true;
 				}
 

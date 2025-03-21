@@ -123,7 +123,7 @@ async function recreateAirtableWorkflow() {
 			{
 				parameters: {
 					resource: 'record',
-					operation: 'search',
+					operation: 'get',
 					application: 'airtable',
 					base: {
 						__rl: true,
@@ -139,8 +139,8 @@ async function recreateAirtableWorkflow() {
 						cachedResultName: 'Counties',
 						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}/${AIRTABLE_REFERENCE.TABLES.COUNTIES}`,
 					},
-					// Use field name in filter formula - USING EXPRESSION MODE
-					filterByFormula: `={${countyFieldName}} = '{{$node["Get Auction Details"].json["fields"]["${auctionCountyFieldName}"]}}' `,
+					// Use record ID from the County linked field in Auction
+					id: '={{$node["Get Auction Details"].json.County[0]}}',
 					options: {},
 				},
 				id: 'get_county',
@@ -155,7 +155,7 @@ async function recreateAirtableWorkflow() {
 					},
 				},
 				notes:
-					'Retrieves county information based on the auction county field. Using field names in the filter formula.',
+					'Retrieves county information using the record ID from the linked County field in the Auction table. Using the "get" operation because we have the record ID directly.',
 			},
 			// Debug County
 			{
@@ -171,7 +171,7 @@ async function recreateAirtableWorkflow() {
 			{
 				parameters: {
 					resource: 'record',
-					operation: 'search',
+					operation: 'get',
 					application: 'airtable',
 					base: {
 						__rl: true,
@@ -187,8 +187,8 @@ async function recreateAirtableWorkflow() {
 						cachedResultName: 'Auction Systems',
 						cachedResultUrl: `https://airtable.com/${AIRTABLE_REFERENCE.BASE_ID}/${AIRTABLE_REFERENCE.TABLES.SYSTEMS}`,
 					},
-					// Use field name in filter formula - USING EXPRESSION MODE
-					filterByFormula: `={${systemFieldName}} = '{{$node["Get County Information"].json["fields"]["${countySystemFieldName}"]}}' `,
+					// Use record ID from the Auction System linked field in County
+					id: '={{$node["Get County Information"].json["Auction System"][0]}}',
 					options: {},
 				},
 				id: 'get_system',
@@ -203,7 +203,7 @@ async function recreateAirtableWorkflow() {
 					},
 				},
 				notes:
-					'Retrieves system information based on the county system field. Using field names in the filter formula.',
+					'Retrieves system information using the record ID from the linked Auction System field in the County record. Using the "get" operation because we have the record ID directly.',
 			},
 			// Debug System
 			{
@@ -240,7 +240,7 @@ async function recreateAirtableWorkflow() {
                         {${scopeFieldName}} = 'global',
                         OR(
                             {${scopeIdFieldName}} = '',
-                            {${scopeIdFieldName}} = '{{$node["Get Auction System"].json["fields"]["${systemFieldName}"]}}'
+                            {${scopeIdFieldName}} = '{{$node["Get Auction System"].json["System Name"]}}'
                         )
                     )`,
 					options: {},
@@ -257,7 +257,7 @@ async function recreateAirtableWorkflow() {
 					},
 				},
 				notes:
-					'Retrieves configuration values based on global scope and system name. Using field names in the filter formula.',
+					'Retrieves configuration values based on global scope and system name. This uses a search operation with a filter formula because we need to find records matching specific criteria.',
 			},
 			// Debug Config
 			{
