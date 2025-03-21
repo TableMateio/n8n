@@ -27,6 +27,7 @@
 			"position": [900, 300]
 		}
 	],
+	"pinData": {},
 	"connections": {
 		"manual_trigger": {
 			"main": [
@@ -49,8 +50,31 @@
 					}
 				]
 			]
+		},
+		"Manual Trigger": {
+			"main": [
+				[
+					{
+						"node": "Initial Execution",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Initial Execution": {
+			"main": [
+				[
+					{
+						"node": "Workflow Complete",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
 		}
 	},
+	"active": false,
 	"settings": {
 		"executionOrder": "v1"
 	}
