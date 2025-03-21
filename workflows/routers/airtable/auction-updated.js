@@ -14,7 +14,9 @@ const WorkflowBuilder = require('../../../utils/generators/workflow-builder');
 const AirtableRef = require('../../../utils/airtable/reference');
 
 /**
- * Build the Auction Updated Router workflow
+ * Build the Auction Updated Router workflow builder instance
+ * This returns the builder object populated with nodes and connections
+ * without actually creating the workflow in n8n
  */
 function buildWorkflow() {
 	// Create a workflow builder
@@ -165,39 +167,59 @@ return { json: routingInfo };
 		},
 	});
 
-	// 4. Add placeholder execution nodes (would be replaced with actual workflow calls in production)
-	// These would use the executeWorkflow node type in a real implementation
+	// 4. Add Execute Workflow nodes for each route
 
 	// For surplus list processing
 	const processSurplusListId = builder.addNode({
-		name: 'Execute Process Surplus List',
-		type: 'n8n-nodes-base.noOp',
+		name: 'Process Surplus List',
+		type: 'n8n-nodes-base.executeWorkflow',
 		typeVersion: 1,
 		position: [850, 200],
 		parameters: {
-			noticeMessage: 'Would execute process-surplus-list workflow here',
+			workflowId: '={{ $getWorkflowByName("processes/auction/process-surplus-list") }}',
+			options: {},
+			inputData: {
+				data: {
+					value: '={{ $json }}',
+					type: 'json',
+				},
+			},
 		},
 	});
 
 	// For auction enrichment
 	const enrichAuctionId = builder.addNode({
-		name: 'Execute Enrich Auction',
-		type: 'n8n-nodes-base.noOp',
+		name: 'Enrich Auction',
+		type: 'n8n-nodes-base.executeWorkflow',
 		typeVersion: 1,
 		position: [850, 350],
 		parameters: {
-			noticeMessage: 'Would execute enrich-auction workflow here',
+			workflowId: '={{ $getWorkflowByName("processes/auction/enrich-auction") }}',
+			options: {},
+			inputData: {
+				data: {
+					value: '={{ $json }}',
+					type: 'json',
+				},
+			},
 		},
 	});
 
 	// For other updates
 	const otherUpdatesId = builder.addNode({
-		name: 'Execute Other Updates',
-		type: 'n8n-nodes-base.noOp',
+		name: 'Other Updates',
+		type: 'n8n-nodes-base.executeWorkflow',
 		typeVersion: 1,
 		position: [850, 500],
 		parameters: {
-			noticeMessage: 'Would execute other update workflows here',
+			workflowId: '={{ $getWorkflowByName("operations/airtable/update-record") }}',
+			options: {},
+			inputData: {
+				data: {
+					value: '={{ $json }}',
+					type: 'json',
+				},
+			},
 		},
 	});
 
@@ -214,8 +236,15 @@ return { json: routingInfo };
 	builder.connectNodes({ sourceNode: switchNodeId, targetNode: enrichAuctionId, sourceOutput: 1 });
 	builder.connectNodes({ sourceNode: switchNodeId, targetNode: otherUpdatesId, sourceOutput: 2 });
 
-	// Create and return the workflow
-	return builder.createWorkflow();
+	// Set workflow settings
+	const workflowSettings = {
+		executionOrder: 'v1',
+		saveExecutionProgress: true,
+		callerPolicy: 'workflowsFromSameOwner',
+	};
+
+	// Return the builder object
+	return builder;
 }
 
 /**
@@ -224,7 +253,8 @@ return { json: routingInfo };
 async function deployWorkflow() {
 	try {
 		console.log('Creating and deploying Auction Updated Router workflow...');
-		const workflow = await buildWorkflow();
+		const builder = buildWorkflow();
+		const workflow = await builder.createWorkflow();
 		console.log(`Created workflow: "${workflow.name}" (ID: ${workflow.id})`);
 		return workflow;
 	} catch (error) {

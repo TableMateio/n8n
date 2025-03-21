@@ -1,0 +1,273 @@
+{
+  "name": "ROUTER: Auction",
+  "nodes": [
+    {
+      "name": "Airtable Trigger",
+      "type": "n8n-nodes-base.airtableTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {
+        "application": "appWxxzsTHMY0MZHu",
+        "table": "tblteK8SeHqZ8xQxV",
+        "operation": "update",
+        "typeOperation": "recordUpdated"
+      },
+      "id": "56a9d50a-93e7-45a0-9fb2-579e6bbe9df6"
+    },
+    {
+      "name": "Determine Route",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ],
+      "parameters": {
+        "functionCode": "\n// Get the updated record\nconst record = $input.item.json;\nconst fields = record.fields || {};\n\n// Initialize routing information\nconst routingInfo = {\n  recordId: record.id,\n  tableName: \"Auctions\",\n  auctionName: fields[\"Auction Name\"] || \"Unknown Auction\",\n  county: fields[\"County\"] || null,\n  updatedFields: {},\n  routing: {\n    shouldProcessSurplusList: false,\n    shouldEnrichAuction: false,\n    shouldUpdateCounty: false,\n    process: null\n  }\n};\n\n// Analyze which fields were updated\nif (fields[\"Surplus List\"] && fields[\"Surplus List\"].length > 0) {\n  routingInfo.updatedFields.surplusList = true;\n  routingInfo.routing.shouldProcessSurplusList = true;\n  routingInfo.routing.process = \"processes/auction/process-surplus-list\";\n}\n\nif (fields[\"Status\"] === \"New\") {\n  routingInfo.updatedFields.status = true;\n  routingInfo.routing.shouldEnrichAuction = true;\n  routingInfo.routing.process = \"processes/auction/enrich-auction\";\n}\n\nif (fields[\"County\"] && !routingInfo.routing.process) {\n  routingInfo.updatedFields.county = true;\n  routingInfo.routing.shouldUpdateCounty = true;\n  routingInfo.routing.process = \"processes/auction/update-county\";\n}\n\n// If no specific process was determined, use a default\nif (!routingInfo.routing.process) {\n  routingInfo.routing.process = \"operations/airtable/update-record\";\n}\n\n// Return the routing information\nreturn { json: routingInfo };\n      "
+      },
+      "id": "73aa2733-82fc-45a4-a61b-fe1aa10dfbfd"
+    },
+    {
+      "name": "Route Request",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        650,
+        300
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "Process Surplus List",
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true,
+                  "typeValidation": "strict"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.routing.process }}",
+                    "rightValue": "processes/auction/process-surplus-list"
+                  }
+                ]
+              },
+              "renameOutput": true
+            },
+            {
+              "outputKey": "Enrich Auction",
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.routing.process }}",
+                    "rightValue": "processes/auction/enrich-auction"
+                  }
+                ]
+              },
+              "renameOutput": true
+            },
+            {
+              "outputKey": "Other Updates",
+              "conditions": {
+                "options": {
+                  "version": 2,
+                  "caseSensitive": true
+                },
+                "combinator": "and",
+                "conditions": []
+              },
+              "renameOutput": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "17595c5f-eb04-4f23-be98-0e73fb26cf6d"
+    },
+    {
+      "name": "Process Surplus List",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        850,
+        200
+      ],
+      "parameters": {
+        "workflowId": "={{ $getWorkflowByName(\"processes/auction/process-surplus-list\") }}",
+        "options": {},
+        "inputData": {
+          "data": {
+            "value": "={{ $json }}",
+            "type": "json"
+          }
+        }
+      },
+      "id": "bab1eee3-0e9a-40dd-89af-acc992914ca6"
+    },
+    {
+      "name": "Enrich Auction",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        850,
+        350
+      ],
+      "parameters": {
+        "workflowId": "={{ $getWorkflowByName(\"processes/auction/enrich-auction\") }}",
+        "options": {},
+        "inputData": {
+          "data": {
+            "value": "={{ $json }}",
+            "type": "json"
+          }
+        }
+      },
+      "id": "139acb84-1065-40a8-a5c4-586f25e62b15"
+    },
+    {
+      "name": "Other Updates",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        850,
+        500
+      ],
+      "parameters": {
+        "workflowId": "={{ $getWorkflowByName(\"operations/airtable/update-record\") }}",
+        "options": {},
+        "inputData": {
+          "data": {
+            "value": "={{ $json }}",
+            "type": "json"
+          }
+        }
+      },
+      "id": "adde8996-751d-45c9-a5a8-cfddf7dc1250"
+    }
+  ],
+  "connections": {
+    "56a9d50a-93e7-45a0-9fb2-579e6bbe9df6": {
+      "main": [
+        [
+          {
+            "node": "73aa2733-82fc-45a4-a61b-fe1aa10dfbfd",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable Trigger": {
+      "main": [
+        [
+          {
+            "node": "Determine Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "73aa2733-82fc-45a4-a61b-fe1aa10dfbfd": {
+      "main": [
+        [
+          {
+            "node": "17595c5f-eb04-4f23-be98-0e73fb26cf6d",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Route": {
+      "main": [
+        [
+          {
+            "node": "Route Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "17595c5f-eb04-4f23-be98-0e73fb26cf6d": {
+      "main": [
+        [
+          {
+            "node": "bab1eee3-0e9a-40dd-89af-acc992914ca6",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "139acb84-1065-40a8-a5c4-586f25e62b15",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "adde8996-751d-45c9-a5a8-cfddf7dc1250",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Request": {
+      "main": [
+        [
+          {
+            "node": "Process Surplus List",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enrich Auction",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Other Updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": [
+    "router",
+    "airtable",
+    "auction"
+  ]
+}
