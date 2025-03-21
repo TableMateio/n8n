@@ -5,6 +5,11 @@
  *
  * This script updates the Test HTTP Workflow with properly connected nodes
  * using BOTH name-based and ID-based connections as required by n8n.
+ *
+ * NOTE: This is a reference example kept for educational purposes.
+ * For new applications, implement similar functionality using the
+ * WorkflowModifier utility in utils/generators/workflow-modifier.js,
+ * which provides a more consistent and maintainable API.
  */
 
 // Disable SSL certificate validation for localhost development

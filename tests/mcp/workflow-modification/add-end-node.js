@@ -5,25 +5,29 @@
  *
  * This script demonstrates how to update an existing workflow
  * by adding a new node at the end of the flow.
+ *
+ * This version uses the modern utilities from utils/generators.
  */
 
 // Disable SSL certificate validation for localhost development
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
-const WorkflowManager = require('./workflow-manager');
+// Import modern utilities
+const WorkflowModifier = require('../../../utils/generators/workflow-modifier');
+const NodeFactory = require('../../../utils/generators/node-factory');
 
-// Configuration
-const config = {
-	url: 'https://127.0.0.1:5678',
-	apiKey:
-		'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzY2E5MjMwZi1hMDVkLTQ4NjQtOGI5ZS03OWU5NDI3YWUzN2IiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzQyNDIxNjk5fQ.tfUSCT54tNBRfHhQnse-uYHhO7qaGx25JAaUD_22sRU',
-};
+// Try to load environment variables if dotenv is available
+try {
+	require('dotenv').config({ path: '.env.mcp' });
+} catch (error) {
+	console.log('Note: dotenv not available, using default configuration');
+}
 
-// Workflow ID to update
-const WORKFLOW_ID = 'f5jNVRgWdDjTl3O0'; // Test HTTP Workflow
+// Workflow ID to update (change this to your target workflow ID)
+const WORKFLOW_ID = process.env.TARGET_WORKFLOW_ID || 'f5jNVRgWdDjTl3O0'; // Test HTTP Workflow
 
-// Create a workflow manager instance
-const manager = new WorkflowManager(config.url, config.apiKey);
+// Create a workflow modifier instance
+const modifier = new WorkflowModifier();
 
 /**
  * Utility to display a highly visible refresh notification
@@ -42,30 +46,19 @@ async function addEndNode() {
 		console.log(`Fetching workflow with ID: ${WORKFLOW_ID}`);
 
 		// First, get the current workflow
-		const workflow = await manager.getWorkflow(WORKFLOW_ID);
+		const workflow = await modifier.getWorkflow(WORKFLOW_ID);
 		console.log(`Found workflow: "${workflow.name}" (ID: ${workflow.id})`);
 		console.log(`Current nodes: ${workflow.nodes.length}`);
 
-		// Map of the current nodes by name for easier reference
-		const nodeMap = workflow.nodes.reduce((map, node) => {
-			map[node.name] = node;
-			return map;
-		}, {});
-
 		// Find the last node in the workflow (Set Status)
-		const lastNode = nodeMap['Set Status'];
-		console.log(`Current last node: ${lastNode.name} (ID: ${lastNode.id})`);
+		const lastNodeName = 'Set Status';
+		console.log(`Current last node: ${lastNodeName}`);
 
-		// Define our new end node (using a Code node for example)
-		const codeNode = {
-			id: 'code-' + Date.now().toString(), // Use timestamp for unique ID
+		// Define our new end node using the NodeFactory
+		const codeNode = NodeFactory.createCodeNode({
 			name: 'Process Data',
-			type: 'n8n-nodes-base.code',
-			typeVersion: 1,
 			position: [850, 300], // Position it to the right of the Set Status node
-			parameters: {
-				mode: 'runOnceForAllItems',
-				jsCode: `
+			jsCode: `
 // Example code that processes data from the previous node
 const items = $input.all();
 const results = items.map(item => {
@@ -78,61 +71,14 @@ const results = items.map(item => {
 });
 
 return results.map(json => ({ json }));`,
-			},
-		};
-
-		// Create a new nodes array with our new node added
-		const updatedNodes = [...workflow.nodes, codeNode];
-
-		// Create the updated connections object
-		// We need to add a connection from the Set Status node to our new Code node
-		// Remember to include both ID-based and name-based connections
-		const updatedConnections = { ...workflow.connections };
-
-		// Add ID-based connection
-		if (!updatedConnections[lastNode.id]) {
-			updatedConnections[lastNode.id] = { main: [[]] };
-		} else if (!updatedConnections[lastNode.id].main) {
-			updatedConnections[lastNode.id].main = [[]];
-		} else if (!updatedConnections[lastNode.id].main[0]) {
-			updatedConnections[lastNode.id].main[0] = [];
-		}
-
-		updatedConnections[lastNode.id].main[0].push({
-			node: codeNode.id,
-			type: 'main',
-			index: 0,
 		});
 
-		// Add name-based connection
-		if (!updatedConnections[lastNode.name]) {
-			updatedConnections[lastNode.name] = { main: [[]] };
-		} else if (!updatedConnections[lastNode.name].main) {
-			updatedConnections[lastNode.name].main = [[]];
-		} else if (!updatedConnections[lastNode.name].main[0]) {
-			updatedConnections[lastNode.name].main[0] = [];
-		}
-
-		updatedConnections[lastNode.name].main[0].push({
-			node: codeNode.name,
-			type: 'main',
-			index: 0,
-		});
-
-		// Update the workflow with our changes
+		// Add the new node to the end of the workflow
 		console.log('Updating workflow with the new end node...');
-		const updatedWorkflow = await manager.updateWorkflow(workflow.id, {
-			name: workflow.name,
-			nodes: updatedNodes,
-			connections: updatedConnections,
-		});
+		const updatedWorkflow = await modifier.addNodeAtEnd(WORKFLOW_ID, lastNodeName, codeNode);
 
 		console.log(`Updated workflow: "${updatedWorkflow.name}" (ID: ${updatedWorkflow.id})`);
 		console.log(`New node count: ${updatedWorkflow.nodes.length}`);
-
-		// Log detailed info about the updated connections
-		console.log('\nUpdated connections:');
-		console.log(JSON.stringify(updatedWorkflow.connections, null, 2));
 
 		showRefreshNotification();
 
@@ -159,7 +105,9 @@ async function run() {
 		showRefreshNotification();
 	} catch (error) {
 		console.error('Update failed:', error.message);
-		console.error(error.stack);
+		if (error.response && error.response.data) {
+			console.error('Server response:', JSON.stringify(error.response.data, null, 2));
+		}
 	}
 }
 

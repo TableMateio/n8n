@@ -1,31 +1,65 @@
 # Workflow Creation Tests
 
-This directory contains scripts for creating various types of n8n workflows.
+This directory previously contained scripts for creating various types of n8n workflows.
 
-## Contents
+## Consolidated into WorkflowBuilder
 
-- **create-basic-workflow.js**: Creates a simple workflow with basic nodes
-- **create-configurable-workflow.js**: Creates workflows with configuration options
-- **create-disconnected-flows.js**: Creates workflows with disconnected node paths
-- **create-matching-workflow.js**: Creates a workflow to match a specific pattern
-- **create-simple-switch-workflow.js**: Creates a workflow with switch/branching logic
-- **create-simple-working-workflow.js**: Creates a minimal but functional workflow
-- **create-single-source-multiple-methods.js**: Creates a workflow with multiple processing methods
-- **create-test-manual-trigger.js**: Creates a workflow with a manual trigger for testing
-- And more...
+The functionality from these scripts has been consolidated into the `WorkflowBuilder` utility, which can be found at:
+
+```
+utils/generators/workflow-builder.js
+```
+
+## Examples
+
+The following example scripts demonstrate how to use the `WorkflowBuilder` utility:
+
+```
+examples/create-basic-workflow.js
+examples/create-surplus-list-workflow.js
+```
+
+## Workflow Builder Features
+
+The `WorkflowBuilder` utility provides a more maintainable and structured approach to creating workflows:
+
+1. **Fluent Interface**: Chain method calls to build workflows
+2. **Proper Connections**: Handles both ID and name-based connections automatically
+3. **Utility Methods**: Includes methods for common workflow patterns
+4. **Flexible Node Creation**: Add nodes with various configurations
+5. **Position Management**: Automatically positions nodes in a logical layout
 
 ## Usage
 
-These scripts can be run directly with Node.js:
+```javascript
+const WorkflowBuilder = require('../../utils/generators/workflow-builder');
 
+// Create a builder instance
+const builder = new WorkflowBuilder();
+
+// Create a basic workflow
+const workflow = await builder.createBasicWorkflow({
+  name: 'My Workflow',
+  triggerType: 'n8n-nodes-base.manualTrigger',
+  actionType: 'n8n-nodes-base.httpRequest',
+  actionParameters: {
+    url: 'https://example.com/api'
+  }
+});
+
+// Or build a custom workflow using the builder pattern
+builder.setName('Custom Workflow');
+const triggerId = builder.addNode({...});
+const actionId = builder.addNode({...});
+builder.connectNodes({
+  sourceNode: triggerId,
+  targetNode: actionId
+});
+const workflow = await builder.createWorkflow();
 ```
-node tests/mcp/workflow-creation/create-basic-workflow.js
-```
 
-## Purpose
+See the examples directory for complete usage examples.
 
-Use these scripts to:
+## Conclusion
 
-1. Create test workflows in your n8n instance
-2. Experiment with different workflow structures
-3. Use as examples for creating your own workflows programmatically
+The individual workflow creation scripts previously contained in this directory served as valuable prototypes and experiments for determining the correct structure and approach to workflow creation. Their functionality has now been consolidated, refined, and enhanced in the WorkflowBuilder utility, which provides a more maintainable and flexible solution for creating workflows programmatically.

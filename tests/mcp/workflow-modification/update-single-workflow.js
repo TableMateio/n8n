@@ -5,6 +5,11 @@
  *
  * This script demonstrates how to update a single existing workflow
  * with properly connected nodes following the exact structure used by n8n.
+ *
+ * NOTE: This is a reference example kept for educational purposes.
+ * For new applications, implement similar functionality using the
+ * WorkflowModifier utility in utils/generators/workflow-modifier.js,
+ * which provides a more consistent and maintainable API.
  */
 
 // Disable SSL certificate validation for localhost development

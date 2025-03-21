@@ -5,6 +5,11 @@
  *
  * This script updates the unified configuration workflow to use the absolute path
  * to the workflow-config.json file and adds debug outputs to help troubleshoot.
+ *
+ * NOTE: This is a legacy script kept for reference. For new applications,
+ * consider implementing similar functionality using the WorkflowFixer utility
+ * in utils/generators/workflow-fixer.js, which provides a more general and
+ * maintainable approach to fixing workflows.
  */
 
 // Disable SSL certificate validation for localhost development

@@ -5,6 +5,11 @@
  *
  * This script updates the expressions in the HTTP Request node for Approach 2
  * to correctly access the binary data from the configuration file.
+ *
+ * NOTE: This is a legacy script kept for reference. For new applications,
+ * consider implementing similar functionality using the WorkflowFixer utility
+ * in utils/generators/workflow-fixer.js, which provides a more general and
+ * maintainable approach to fixing workflows.
  */
 
 // Disable SSL certificate validation for localhost development
