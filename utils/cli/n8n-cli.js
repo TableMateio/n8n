@@ -324,9 +324,7 @@ const commands = {
 					nodes: workflow.nodes,
 					connections: workflow.connections,
 					settings: workflow.settings,
-					// Preserve these fields from the existing workflow if they exist
-					active: matchingWorkflow.active,
-					// Don't include other fields that might cause issues with the API
+					// Don't include any other fields that might cause issues with the API
 				};
 
 				result = await makeN8nRequest(`/workflows/${matchingWorkflow.id}`, 'PUT', updatedWorkflow);
