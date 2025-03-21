@@ -2,7 +2,32 @@
 	"name": "ROUTER: Auctions",
 	"nodes": [
 		{
+			"name": "Schedule Trigger",
+			"type": "n8n-nodes-base.scheduleTrigger",
+			"typeVersion": 1,
+			"position": [250, 300],
 			"parameters": {
+				"triggerTimes": {
+					"item": [
+						{
+							"hour": 7,
+							"minute": 0
+						}
+					]
+				}
+			},
+			"id": "schedule_trigger",
+			"notes": "Triggers daily at 7:00 AM to check for auctions with Surplus List data ready for processing."
+		},
+		{
+			"name": "Get Auctions with Surplus List",
+			"type": "n8n-nodes-base.airtable",
+			"typeVersion": 2,
+			"position": [450, 300],
+			"parameters": {
+				"resource": "record",
+				"operation": "search",
+				"application": "airtable",
 				"base": {
 					"__rl": true,
 					"value": "appWxxzsTHMY0MZHu",
@@ -17,63 +42,72 @@
 					"cachedResultName": "Auctions",
 					"cachedResultUrl": "https://airtable.com/appWxxzsTHMY0MZHu/tblteK8SeHqZ8xQxV"
 				},
-				"operation": "update",
-				"typeOperation": "recordUpdated"
+				"filterByFormula": "AND(NOT({Surplus List}=''),{Foreclosures}='')",
+				"options": {
+					"downloadAttachments": true
+				}
 			},
-			"id": "airtable_trigger",
-			"name": "Airtable Trigger",
-			"type": "n8n-nodes-base.airtableTrigger",
-			"typeVersion": 1,
-			"position": [480, 300],
+			"id": "airtable_query",
 			"credentials": {
 				"airtableTokenApi": {
 					"id": "KqeYloYYVZeNChgU",
 					"name": "Airtable"
 				}
 			},
-			"notes": "Triggers when an Auction record is updated in Airtable. The workflow will focus specifically on changes to the 'Surplus List' field."
+			"notes": "Queries Airtable for auctions that have a Surplus List but don't have any Foreclosures created yet."
 		},
 		{
-			"parameters": {
-				"functionCode": "// Determine if the 'Surplus List' field was updated\nconst record = $input.item.json;\nconst fields = record.fields || {};\n\n// Check if Surplus List field exists and has content\nif (fields[\"Surplus List\"] && fields[\"Surplus List\"].length > 0) {\n  const timestamp = new Date().toISOString();\n  \n  return {\n    json: {\n      recordId: record.id,\n      auctionName: fields[\"Auction Name\"] || \"Unknown Auction\",\n      county: fields[\"County\"] || \"Unknown County\",\n      surplusList: fields[\"Surplus List\"],\n      message: `Surplus List updated for auction at ${timestamp}`,\n      action: 'surplus_list_updated'\n    }\n  };\n} else {\n  // If no Surplus List, skip processing\n  return [];\n}\n"
-			},
-			"id": "code_node",
-			"name": "Check Surplus List Field",
+			"name": "Process Each Auction",
 			"type": "n8n-nodes-base.function",
 			"typeVersion": 1,
-			"position": [700, 300],
-			"notes": "Examines the updated record to determine if the 'Surplus List' field was updated with a new attachment. If so, extracts relevant information for processing; otherwise, skips the record."
+			"position": [650, 300],
+			"parameters": {
+				"functionCode": "// Process each auction with Surplus List\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const record = item.json;\n  const fields = record.fields || {};\n  \n  // Verify Surplus List exists and Foreclosures is empty\n  if (fields[\"Surplus List\"] && fields[\"Surplus List\"].length > 0 && \n      (!fields[\"Foreclosures\"] || fields[\"Foreclosures\"].length === 0)) {\n    \n    const timestamp = new Date().toISOString();\n    \n    results.push({\n      json: {\n        recordId: record.id,\n        auctionName: fields[\"Auction Name\"] || \"Unknown Auction\",\n        county: fields[\"County\"] ? fields[\"County\"][0] : \"Unknown County\",\n        surplusList: fields[\"Surplus List\"],\n        message: `Surplus List found for auction at ${timestamp}`,\n        action: 'process_surplus_list'\n      }\n    });\n  }\n}\n\nreturn results.length > 0 ? results : [];"
+			},
+			"id": "process_function",
+			"notes": "Processes each auction that has a Surplus List but no Foreclosures yet. Prepares the data for downstream processing."
 		},
 		{
+			"name": "Workflow Complete",
+			"type": "n8n-nodes-base.noOp",
+			"typeVersion": 1,
+			"position": [850, 300],
 			"parameters": {
 				"description": "End of the workflow. In a complete implementation, this would be replaced with various downstream processes for processing the Surplus List."
 			},
 			"id": "no_op",
-			"name": "Workflow Complete",
-			"type": "n8n-nodes-base.noOp",
-			"typeVersion": 1,
-			"position": [900, 300],
 			"notes": "Placeholder node for the end of the workflow. In a production implementation, this would be replaced with nodes that process the Surplus List attachment, potentially extracting data and creating related records."
 		}
 	],
 	"pinData": {},
 	"connections": {
-		"airtable_trigger": {
+		"Schedule Trigger": {
 			"main": [
 				[
 					{
-						"node": "code_node",
+						"node": "Get Auctions with Surplus List",
 						"type": "main",
 						"index": 0
 					}
 				]
 			]
 		},
-		"code_node": {
+		"Get Auctions with Surplus List": {
 			"main": [
 				[
 					{
-						"node": "no_op",
+						"node": "Process Each Auction",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Process Each Auction": {
+			"main": [
+				[
+					{
+						"node": "Workflow Complete",
 						"type": "main",
 						"index": 0
 					}
@@ -85,10 +119,9 @@
 	"settings": {
 		"executionOrder": "v1"
 	},
-	"versionId": "1",
+	"id": "TYI9aehJQl3PGEcH",
 	"meta": {
 		"instanceId": "4dba8cd386ae3944b2fc7eaa8a1fd4bf66504415151768c62f3b476b5123f76d"
 	},
-	"id": "",
 	"tags": []
 }
