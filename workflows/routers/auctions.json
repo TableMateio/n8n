@@ -44,7 +44,7 @@
 				},
 				"filterByFormula": "AND(NOT({Surplus List}=''),{Foreclosures}='')",
 				"options": {
-					"downloadAttachments": true
+					"downloadFields": ["Surplus List"]
 				}
 			},
 			"id": "airtable_query",
@@ -54,7 +54,7 @@
 					"name": "Airtable"
 				}
 			},
-			"notes": "Queries Airtable for auctions that have a Surplus List but don't have any Foreclosures created yet."
+			"notes": "Queries Airtable for auctions that have a Surplus List but don't have any Foreclosures created yet. Downloads the Surplus List attachments."
 		},
 		{
 			"name": "Process Each Auction",
@@ -62,7 +62,7 @@
 			"typeVersion": 1,
 			"position": [650, 300],
 			"parameters": {
-				"functionCode": "// Process each auction with Surplus List\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const record = item.json;\n  const fields = record.fields || {};\n  \n  // Verify Surplus List exists and Foreclosures is empty\n  if (fields[\"Surplus List\"] && fields[\"Surplus List\"].length > 0 && \n      (!fields[\"Foreclosures\"] || fields[\"Foreclosures\"].length === 0)) {\n    \n    const timestamp = new Date().toISOString();\n    const surplusList = fields[\"Surplus List\"];\n    const attachment = surplusList[0]; // Get the first attachment\n    \n    // Extract binary data if available\n    const binary = {};\n    if (attachment && attachment.url) {\n      if (item.binary && item.binary._attachments) {\n        // If binary data was downloaded\n        const attachmentFilename = attachment.filename;\n        const binaryKey = Object.keys(item.binary._attachments).find(key => \n          item.binary._attachments[key].fileName === attachmentFilename\n        );\n        \n        if (binaryKey) {\n          binary.pdf = item.binary._attachments[binaryKey];\n        }\n      }\n    }\n    \n    results.push({\n      json: {\n        recordId: record.id,\n        auctionName: fields[\"Auction Name\"] || \"Unknown Auction\",\n        county: fields[\"County\"] ? fields[\"County\"][0] : \"Unknown County\",\n        surplusList: surplusList,\n        attachment: attachment,\n        message: `Surplus List found for auction at ${timestamp}`,\n        action: 'process_surplus_list'\n      },\n      binary: Object.keys(binary).length > 0 ? binary : undefined\n    });\n  }\n}\n\nreturn results.length > 0 ? results : [];"
+				"functionCode": "// Process each auction with Surplus List\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const record = item.json;\n  const fields = record.fields || {};\n  \n  // Verify Surplus List exists and Foreclosures is empty\n  if (fields[\"Surplus List\"] && fields[\"Surplus List\"].length > 0 && \n      (!fields[\"Foreclosures\"] || fields[\"Foreclosures\"].length === 0)) {\n    \n    const timestamp = new Date().toISOString();\n    const surplusList = fields[\"Surplus List\"];\n    const attachment = surplusList[0]; // Get the first attachment\n    \n    // Extract binary data\n    let pdfBinary = null;\n    const binaryKeys = Object.keys(item.binary || {});\n    \n    // Look through binary data for the PDF\n    for (const key of binaryKeys) {\n      // If we find a PDF file that matches our attachment filename\n      if (item.binary[key] && \n          item.binary[key].fileName === attachment.filename && \n          item.binary[key].mimeType === 'application/pdf') {\n        pdfBinary = item.binary[key];\n        break;\n      }\n    }\n    \n    results.push({\n      json: {\n        recordId: record.id,\n        auctionName: fields[\"Auction Name\"] || \"Unknown Auction\",\n        county: fields[\"County\"] ? fields[\"County\"][0] : \"Unknown County\",\n        surplusList: surplusList,\n        attachment: attachment,\n        message: `Surplus List found for auction at ${timestamp}`,\n        action: 'process_surplus_list'\n      },\n      binary: pdfBinary ? { pdf: pdfBinary } : undefined\n    });\n  }\n}\n\nreturn results.length > 0 ? results : [{ json: { message: \"No auctions found with surplus lists\" } }];"
 			},
 			"id": "process_function",
 			"notes": "Processes each auction that has a Surplus List but no Foreclosures yet. Extracts attachment information and prepares binary data for PDF processing."
