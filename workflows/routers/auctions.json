@@ -62,21 +62,68 @@
 			"typeVersion": 1,
 			"position": [650, 300],
 			"parameters": {
-				"functionCode": "// Process each auction with Surplus List\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const record = item.json;\n  const fields = record.fields || {};\n  \n  // Verify Surplus List exists and Foreclosures is empty\n  if (fields[\"Surplus List\"] && fields[\"Surplus List\"].length > 0 && \n      (!fields[\"Foreclosures\"] || fields[\"Foreclosures\"].length === 0)) {\n    \n    const timestamp = new Date().toISOString();\n    \n    results.push({\n      json: {\n        recordId: record.id,\n        auctionName: fields[\"Auction Name\"] || \"Unknown Auction\",\n        county: fields[\"County\"] ? fields[\"County\"][0] : \"Unknown County\",\n        surplusList: fields[\"Surplus List\"],\n        message: `Surplus List found for auction at ${timestamp}`,\n        action: 'process_surplus_list'\n      }\n    });\n  }\n}\n\nreturn results.length > 0 ? results : [];"
+				"functionCode": "// Process each auction with Surplus List\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const record = item.json;\n  const fields = record.fields || {};\n  \n  // Verify Surplus List exists and Foreclosures is empty\n  if (fields[\"Surplus List\"] && fields[\"Surplus List\"].length > 0 && \n      (!fields[\"Foreclosures\"] || fields[\"Foreclosures\"].length === 0)) {\n    \n    const timestamp = new Date().toISOString();\n    const surplusList = fields[\"Surplus List\"];\n    const attachment = surplusList[0]; // Get the first attachment\n    \n    // Extract binary data if available\n    const binary = {};\n    if (attachment && attachment.url) {\n      if (item.binary && item.binary._attachments) {\n        // If binary data was downloaded\n        const attachmentFilename = attachment.filename;\n        const binaryKey = Object.keys(item.binary._attachments).find(key => \n          item.binary._attachments[key].fileName === attachmentFilename\n        );\n        \n        if (binaryKey) {\n          binary.pdf = item.binary._attachments[binaryKey];\n        }\n      }\n    }\n    \n    results.push({\n      json: {\n        recordId: record.id,\n        auctionName: fields[\"Auction Name\"] || \"Unknown Auction\",\n        county: fields[\"County\"] ? fields[\"County\"][0] : \"Unknown County\",\n        surplusList: surplusList,\n        attachment: attachment,\n        message: `Surplus List found for auction at ${timestamp}`,\n        action: 'process_surplus_list'\n      },\n      binary: Object.keys(binary).length > 0 ? binary : undefined\n    });\n  }\n}\n\nreturn results.length > 0 ? results : [];"
 			},
 			"id": "process_function",
-			"notes": "Processes each auction that has a Surplus List but no Foreclosures yet. Prepares the data for downstream processing."
+			"notes": "Processes each auction that has a Surplus List but no Foreclosures yet. Extracts attachment information and prepares binary data for PDF processing."
+		},
+		{
+			"name": "Extract PDF Text",
+			"type": "n8n-nodes-base.extractFromFile",
+			"typeVersion": 1,
+			"position": [850, 300],
+			"parameters": {
+				"operation": "pdfToText",
+				"binaryPropertyName": "pdf",
+				"options": {
+					"keepSource": "both",
+					"joinPages": true
+				}
+			},
+			"id": "extract_pdf",
+			"notes": "Extracts the text content from the PDF attachment using n8n's built-in PDF extraction capabilities."
+		},
+		{
+			"name": "Parse PDF Content",
+			"type": "n8n-nodes-base.function",
+			"typeVersion": 1,
+			"position": [1050, 300],
+			"parameters": {
+				"functionCode": "// Get the PDF text content\nconst pdfText = $input.item.json.text || '';\n\n// Create regular expressions for the data we want to extract\nconst parcelRegex = /Parcel(?:ID|\\s#|\\sNumber)?:?\\s*([A-Z0-9-]+)/i;\nconst addressRegex = /(\\d+\\s+[^,\\n]+(?:[,\\s]+[^,\\n]+){1,3})/i;\nconst ownerRegex = /Owner(?:'s)?\\s*Name:?\\s*([^\\n]+)/i;\nconst amountRegex = /\\$\\s*(\\d{1,3}(?:,\\d{3})*\\.?\\d*)/;\n\n// Function to extract data using regex\nfunction extractWithRegex(text, regex) {\n  const match = text.match(regex);\n  return match ? match[1].trim() : null;\n}\n\n// Process each page of text\nconst lines = pdfText.split('\\n');\nconst foreclosures = [];\nlet currentForeclosure = {};\n\nfor (const line of lines) {\n  // Check for a parcel ID - usually indicates a new property\n  const parcelMatch = line.match(parcelRegex);\n  if (parcelMatch) {\n    // If we have data for the previous property, save it\n    if (currentForeclosure.parcelId) {\n      foreclosures.push({...currentForeclosure});\n    }\n\n    // Start a new property\n    currentForeclosure = {\n      parcelId: parcelMatch[1].trim(),\n      auctionId: $input.item.json.recordId,\n      auctionName: $input.item.json.auctionName,\n      county: $input.item.json.county\n    };\n  }\n\n  // Extract other details\n  if (!currentForeclosure.address) {\n    const addressMatch = line.match(addressRegex);\n    if (addressMatch) {\n      currentForeclosure.address = addressMatch[1].trim();\n    }\n  }\n\n  if (!currentForeclosure.owner) {\n    const ownerMatch = line.match(ownerRegex);\n    if (ownerMatch) {\n      currentForeclosure.owner = ownerMatch[1].trim();\n    }\n  }\n\n  if (!currentForeclosure.amount) {\n    const amountMatch = line.match(amountRegex);\n    if (amountMatch) {\n      currentForeclosure.amount = amountMatch[1].trim();\n    }\n  }\n}\n\n// Don't forget the last property\nif (currentForeclosure.parcelId) {\n  foreclosures.push({...currentForeclosure});\n}\n\n// Return all foreclosures found\nreturn {\n  json: {\n    auctionId: $input.item.json.recordId,\n    auctionName: $input.item.json.auctionName,\n    county: $input.item.json.county,\n    foreclosuresCount: foreclosures.length,\n    foreclosures: foreclosures\n  }\n};"
+			},
+			"id": "parse_pdf",
+			"notes": "Parses the extracted PDF text to identify foreclosure information including parcel IDs, addresses, owners, and amounts."
+		},
+		{
+			"name": "Create CSV File",
+			"type": "n8n-nodes-base.spreadsheetFile",
+			"typeVersion": 1,
+			"position": [1250, 300],
+			"parameters": {
+				"operation": "toFile",
+				"options": {
+					"headerRow": true,
+					"fileFormat": "csv"
+				},
+				"sourceData": "={{$json.foreclosures}}",
+				"binaryPropertyName": "data",
+				"options": {
+					"fileName": "={{\"surplus-foreclosures-\" + $json.auctionId + \".csv\"}}"
+				}
+			},
+			"id": "create_csv",
+			"notes": "Creates a CSV file containing the extracted foreclosure information for further processing or review."
 		},
 		{
 			"name": "Workflow Complete",
 			"type": "n8n-nodes-base.noOp",
 			"typeVersion": 1,
-			"position": [850, 300],
+			"position": [1450, 300],
 			"parameters": {
-				"description": "End of the workflow. In a complete implementation, this would be replaced with various downstream processes for processing the Surplus List."
+				"description": "End of the workflow. The extracted foreclosure data is now available as a CSV file."
 			},
 			"id": "no_op",
-			"notes": "Placeholder node for the end of the workflow. In a production implementation, this would be replaced with nodes that process the Surplus List attachment, potentially extracting data and creating related records."
+			"notes": "Workflow complete. In a production implementation, additional steps could include creating foreclosure records in Airtable, sending notifications, or triggering other processes."
 		}
 	],
 	"pinData": {},
@@ -104,6 +151,39 @@
 			]
 		},
 		"Process Each Auction": {
+			"main": [
+				[
+					{
+						"node": "Extract PDF Text",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Extract PDF Text": {
+			"main": [
+				[
+					{
+						"node": "Parse PDF Content",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Parse PDF Content": {
+			"main": [
+				[
+					{
+						"node": "Create CSV File",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Create CSV File": {
 			"main": [
 				[
 					{
