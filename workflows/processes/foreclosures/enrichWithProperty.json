@@ -78,7 +78,8 @@
 						"width": 1280,
 						"height": 800
 					}
-				}
+				},
+				"url": "={{ $node[\"Configuration\"].json.baseURL }}"
 			},
 			"name": "Initialize Browser",
 			"type": "n8n-nodes-puppeteer.puppeteer",
@@ -101,12 +102,17 @@
 		},
 		{
 			"parameters": {
-				"mode": "mergeByPosition",
-				"value1": "={{ $json.processedCount < $json.totalCount }}",
-				"value2": true
+				"conditions": {
+					"boolean": [
+						{
+							"value1": "={{ $json.processedCount < $json.totalCount }}",
+							"value2": true
+						}
+					]
+				}
 			},
 			"name": "More Records to Process?",
-			"type": "n8n-nodes-base.compareValues",
+			"type": "n8n-nodes-base.if",
 			"typeVersion": 1,
 			"position": [1300, 300],
 			"id": "7a8b9c0d-1e2f-3g4h-5i6j-7k8l9m0n1o2p",
