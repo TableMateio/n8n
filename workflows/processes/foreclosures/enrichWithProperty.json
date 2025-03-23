@@ -1,0 +1,298 @@
+{
+	"name": "PROCESS: Foreclosures - Enrich with Property",
+	"nodes": [
+		{
+			"parameters": {},
+			"name": "Start",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [240, 300],
+			"id": "f4c3ebd9-946d-42d6-9b8c-985ca27f2f00"
+		},
+		{
+			"parameters": {
+				"values": {
+					"string": [
+						{
+							"name": "headless",
+							"value": "={{ $json.headless === true }}"
+						},
+						{
+							"name": "baseURL",
+							"value": "http://imo.ulstercountyny.gov/index.aspx"
+						},
+						{
+							"name": "batchSize",
+							"value": 5
+						}
+					]
+				},
+				"options": {}
+			},
+			"name": "Configuration",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 2,
+			"position": [460, 300],
+			"id": "e5c7b337-4a9a-4c8d-882a-b83160a678e5",
+			"notes": "Set key parameters for the workflow. By default the browser is visible (headless=false) for debugging, can be set to true for production."
+		},
+		{
+			"parameters": {
+				"operation": "search",
+				"base": {
+					"__rl": true,
+					"value": "appZMhZh6hDrzAnuV",
+					"mode": "list",
+					"cachedResultName": "Tax Surplus Test",
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
+				},
+				"table": {
+					"__rl": true,
+					"value": "tblhq8mn3e6u4Ta39",
+					"mode": "list",
+					"cachedResultName": "Foreclosures",
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblhq8mn3e6u4Ta39"
+				},
+				"filterByFormula": "AND({County} = \"Ulster\", {Number} != \"\", {Owner} = \"\", {SBL} != \"\")",
+				"limit": "={{ $node[\"Configuration\"].json.batchSize }}"
+			},
+			"name": "Get Foreclosures Needing Property Info",
+			"type": "n8n-nodes-base.airtable",
+			"typeVersion": 2,
+			"position": [680, 300],
+			"credentials": {
+				"airtableTokenApi": {
+					"id": "1",
+					"name": "Airtable"
+				}
+			},
+			"id": "2e5c0b3d-a1b1-4d3b-8fda-b6a6e2c4b0a7",
+			"notes": "Retrieves foreclosure records from Airtable that need property information enrichment. Filters to only include Ulster County records with SBL numbers but without Owner data."
+		},
+		{
+			"parameters": {
+				"options": {
+					"headless": "={{ $node[\"Configuration\"].json.headless }}",
+					"stealth": true,
+					"defaultViewport": {
+						"width": 1280,
+						"height": 800
+					}
+				}
+			},
+			"name": "Initialize Browser",
+			"type": "n8n-nodes-puppeteer.puppeteer",
+			"typeVersion": 1,
+			"position": [900, 300],
+			"id": "75173cef-b2d8-4355-b2d9-87f1213b1b79",
+			"notes": "Initializes a Puppeteer browser instance. Headless mode is controlled by the Configuration node, with visibility enabled by default."
+		},
+		{
+			"parameters": {
+				"batchSize": 1,
+				"options": {
+					"reset": false
+				}
+			},
+			"name": "Process Each Foreclosure",
+			"type": "n8n-nodes-base.splitInBatches",
+			"typeVersion": 2,
+			"position": [1120, 300],
+			"id": "c9fb5c59-8d7e-4c9a-9bdc-cd96bf03b5bf",
+			"notes": "Processes foreclosure records one at a time to avoid overloading the property database."
+		},
+		{
+			"parameters": {
+				"operation": "runCustomScript",
+				"url": "={{ $node[\"Configuration\"].json.baseURL }}",
+				"functionCode": "// Current foreclosure record\nconst foreclosure = $input.first().json;\nconst sbl = foreclosure.fields.SBL;\n\n// Navigate to the property search page\nawait $page.goto($input.item.baseURL, { waitUntil: 'networkidle0' });\n\n// Check if agreement overlay appears and click \"agree\" if it does\ntry {\n  const agreeButton = await $page.waitForSelector('input[value=\"I Agree\"]', { timeout: 5000 });\n  if (agreeButton) {\n    console.log('Clicking agree button...');\n    await agreeButton.click();\n    await $page.waitForNavigation({ waitUntil: 'networkidle0' });\n  }\n} catch (error) {\n  console.log('No agreement dialog found or error clicking it:', error.message);\n}\n\n// Wait for the main search page to load\nawait $page.waitForSelector('select[name=\"selectmun\"]');\n\n// Get SBL parts\nlet sblParts = sbl.split('-');\nif (sblParts.length !== 4) {\n  return [\n    {\n      ...foreclosure,\n      error: `Invalid SBL format: ${sbl}. Expected format: XXX-X-XX-XXX`\n    }\n  ];\n}\n\n// Select Ulster municipality (106 = Ulster)\nconst selectMun = await $page.select('select[name=\"selectmun\"]', '106');\n\n// Fill in SBL parts\nawait $page.type('input[name=\"swis\"]', sblParts[0]);\nawait $page.type('input[name=\"section\"]', sblParts[1]);\nawait $page.type('input[name=\"block\"]', sblParts[2]);\nawait $page.type('input[name=\"lot\"]', sblParts[3]);\n\n// Click search button\nconst searchButton = await $page.waitForSelector('input[value=\"Search\"]');\nawait searchButton.click();\n\n// Wait for results\nawait $page.waitForNavigation({ waitUntil: 'networkidle0' });\n\n// Check if we have results\nconst noResultsText = await $page.evaluate(() => {\n  const elem = document.querySelector('body');\n  return elem ? elem.innerText.includes('No records found') : false;\n});\n\nif (noResultsText) {\n  return [\n    {\n      ...foreclosure,\n      error: `No property found for SBL: ${sbl}`\n    }\n  ];\n}\n\n// Click on the first result if available\nconst firstResultLink = await $page.$('a[href^=\"infopage.jsp\"]');\nif (!firstResultLink) {\n  return [\n    {\n      ...foreclosure,\n      error: `No property link found for SBL: ${sbl}`\n    }\n  ];\n}\n\nawait firstResultLink.click();\nawait $page.waitForNavigation({ waitUntil: 'networkidle0' });\n\n// Extract property information\nconst propertyInfo = await $page.evaluate(() => {\n  const getData = (label) => {\n    const labelElement = Array.from(document.querySelectorAll('td')).find(el => el.innerText.includes(label));\n    if (labelElement) {\n      const valueElement = labelElement.nextElementSibling;\n      return valueElement ? valueElement.innerText.trim() : '';\n    }\n    return '';\n  };\n\n  return {\n    owner: getData('Primary Owner:'),\n    propertyAddress: getData('Location:'),\n    propertyClass: getData('Property Class:'),\n    assessedValue: getData('Assessed Value:'),\n    taxableValue: getData('Taxable Value:'),\n    acreage: getData('Acres:'),\n    yearBuilt: getData('Year Built:')\n  };\n});\n\n// Take a screenshot for verification\nconst screenshot = await $page.screenshot({ type: 'png', encoding: 'base64' });\n\n// Return the enriched foreclosure data\nreturn [\n  {\n    ...foreclosure,\n    propertyInfo,\n    binary: {\n      screenshot: {\n        data: screenshot,\n        mimeType: 'image/png',\n        fileName: `property_${sbl}.png`\n      }\n    }\n  }\n];"
+			},
+			"name": "Extract Property Info",
+			"type": "n8n-nodes-puppeteer.puppeteer",
+			"typeVersion": 1,
+			"position": [1340, 300],
+			"id": "8d435d43-16cc-4426-8f02-48110ae678f1",
+			"notes": "Uses Puppeteer to navigate the Ulster County property database, search by SBL number, and extract property information."
+		},
+		{
+			"parameters": {
+				"operation": "update",
+				"base": {
+					"__rl": true,
+					"value": "appZMhZh6hDrzAnuV",
+					"mode": "list",
+					"cachedResultName": "Tax Surplus Test",
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
+				},
+				"table": {
+					"__rl": true,
+					"value": "tblhq8mn3e6u4Ta39",
+					"mode": "list",
+					"cachedResultName": "Foreclosures",
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblhq8mn3e6u4Ta39"
+				},
+				"id": "={{ $json.id }}",
+				"updateFields": {
+					"values": {
+						"Owner": "={{ $json.propertyInfo.owner || '' }}",
+						"Property Address": "={{ $json.propertyInfo.propertyAddress || '' }}",
+						"Property Class": "={{ $json.propertyInfo.propertyClass || '' }}",
+						"Assessed Value": "={{ $json.propertyInfo.assessedValue || '' }}",
+						"Taxable Value": "={{ $json.propertyInfo.taxableValue || '' }}",
+						"Acreage": "={{ $json.propertyInfo.acreage || '' }}",
+						"Year Built": "={{ $json.propertyInfo.yearBuilt || '' }}",
+						"Property Error": "={{ $json.error || '' }}",
+						"Last Updated": "={{ $now }}"
+					}
+				}
+			},
+			"name": "Update Foreclosure Record",
+			"type": "n8n-nodes-base.airtable",
+			"typeVersion": 2,
+			"position": [1560, 300],
+			"credentials": {
+				"airtableTokenApi": {
+					"id": "1",
+					"name": "Airtable"
+				}
+			},
+			"id": "9e7c3d4f-a1b1-4d3b-8fda-b6a6e2c4b0a7",
+			"notes": "Updates the foreclosure record in Airtable with the property information extracted from the website."
+		},
+		{
+			"parameters": {
+				"conditions": {
+					"boolean": [
+						{
+							"value1": "={{ $node[\"Process Each Foreclosure\"].context[\"noItemsLeft\"] }}",
+							"value2": true
+						}
+					]
+				}
+			},
+			"name": "All Records Processed?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 1,
+			"position": [1780, 300],
+			"id": "f9c6d5e8-b2c1-4a9e-9edf-c8a7e3b2d1c0",
+			"notes": "Checks if all records have been processed to determine whether to close the browser or continue processing."
+		},
+		{
+			"parameters": {
+				"operation": "closeBrowser"
+			},
+			"name": "Close Browser",
+			"type": "n8n-nodes-puppeteer.puppeteer",
+			"typeVersion": 1,
+			"position": [2000, 180],
+			"id": "d8c7b6a5-e3d2-4f1c-bede-a9b8c7d6e5f4",
+			"notes": "Properly closes the browser instance when all records have been processed."
+		}
+	],
+	"connections": {
+		"Start": {
+			"main": [
+				[
+					{
+						"node": "Configuration",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Configuration": {
+			"main": [
+				[
+					{
+						"node": "Get Foreclosures Needing Property Info",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Foreclosures Needing Property Info": {
+			"main": [
+				[
+					{
+						"node": "Initialize Browser",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Initialize Browser": {
+			"main": [
+				[
+					{
+						"node": "Process Each Foreclosure",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Process Each Foreclosure": {
+			"main": [
+				[
+					{
+						"node": "Extract Property Info",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Extract Property Info": {
+			"main": [
+				[
+					{
+						"node": "Update Foreclosure Record",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Update Foreclosure Record": {
+			"main": [
+				[
+					{
+						"node": "All Records Processed?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"All Records Processed?": {
+			"main": [
+				[
+					{
+						"node": "Close Browser",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Process Each Foreclosure",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"pinData": {},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"versionId": "",
+	"meta": {
+		"instanceId": "4dba8cd386ae3944b2fc7eaa8a1fd4bf66504415151768c62f3b476b5123f76d"
+	},
+	"tags": []
+}
