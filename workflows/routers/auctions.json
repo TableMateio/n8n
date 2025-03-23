@@ -1,327 +1,4843 @@
 {
-	"name": "ROUTER: Auctions",
-	"nodes": [
-		{
-			"name": "Schedule Trigger",
-			"type": "n8n-nodes-base.scheduleTrigger",
-			"typeVersion": 1,
-			"position": [250, 300],
-			"parameters": {
-				"triggerTimes": {
-					"item": [
-						{
-							"hour": 7,
-							"minute": 0
-						}
-					]
-				}
-			},
-			"id": "schedule_trigger",
-			"notes": "Triggers daily at 7:00 AM to check for auctions with Surplus List data ready for processing."
-		},
-		{
-			"name": "Get Auctions with Surplus List",
-			"type": "n8n-nodes-base.airtable",
-			"typeVersion": 2,
-			"position": [450, 300],
-			"parameters": {
-				"resource": "record",
-				"operation": "search",
-				"application": "airtable",
-				"base": {
-					"__rl": true,
-					"value": "appZMhZh6hDrzAnuV",
-					"mode": "list",
-					"cachedResultName": "Tax Surplus Test",
-					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
-				},
-				"table": {
-					"__rl": true,
-					"value": "tblteK8SeHqZ8xQxV",
-					"mode": "list",
-					"cachedResultName": "Auctions",
-					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblteK8SeHqZ8xQxV"
-				},
-				"filterByFormula": "AND(NOT({Surplus List}=''),{Foreclosures}='')",
-				"options": {
-					"downloadFields": ["Surplus List"]
-				}
-			},
-			"id": "airtable_query",
-			"credentials": {
-				"airtableTokenApi": {
-					"id": "KqeYloYYVZeNChgU",
-					"name": "Airtable"
-				}
-			},
-			"notes": "Queries Airtable for auctions that have a Surplus List but don't have any Foreclosures created yet. Downloads the Surplus List attachments."
-		},
-		{
-			"name": "Extract PDF Text",
-			"type": "n8n-nodes-base.extractFromFile",
-			"typeVersion": 1,
-			"position": [650, 300],
-			"parameters": {
-				"operation": "pdf",
-				"binaryPropertyName": "Surplus List_0",
-				"options": {}
-			},
-			"id": "extract_pdf",
-			"notes": "Extracts the text content directly from the PDF attachment using the binary field 'Surplus List_0'."
-		},
-		{
-			"name": "Split PDF by Pages",
-			"type": "n8n-nodes-base.function",
-			"typeVersion": 1,
-			"position": [800, 300],
-			"parameters": {
-				"functionCode": "// Get the PDF text content and record info\nconst pdfText = $input.item.json.text || '';\nconst recordId = $input.item.json.id || '';\n\n// Safely access fields - handle case where fields object might be undefined\nconst fields = $input.item.json.fields || {};\nconst auctionTitle = fields[\"Auction\"] || \"Unknown Auction\";\n\n// Log basic info for debugging\nconsole.log(\"Processing PDF content for auction ID:\", recordId);\nconsole.log(\"Auction Title:\", auctionTitle);\nconsole.log(\"PDF extracted text length:\", pdfText.length);\n\n// See if we have metadata about the PDF pages\nconst numPages = $input.item.json.numpages || 1;\nconsole.log(\"PDF has\", numPages, \"pages\");\n\n// Split the text by page markers to get individual pages\nlet pages = [];\n\n// Try to split by common page markers\nif (pdfText.includes('Page |')) {\n  // Split by 'Page |' marker which appears in headers/footers\n  pages = pdfText.split(/Page \\|/).filter(page => page.trim().length > 0);\n} else if (pdfText.includes('Page:')) {\n  // Alternative page marker\n  pages = pdfText.split(/Page:/).filter(page => page.trim().length > 0);\n} else {\n  // If no clear page markers, create chunks by estimated page size\n  // Typically PDFs have 3000-4000 characters per page\n  const chunkSize = 3500;\n  for (let i = 0; i < pdfText.length; i += chunkSize) {\n    pages.push(pdfText.substring(i, i + chunkSize));\n  }\n}\n\n// If we ended up with no pages, treat the whole PDF as one page\nif (pages.length === 0) {\n  pages = [pdfText];\n}\n\n// Create one item per page for processing\nreturn pages.map((pageText, index) => {\n  return {\n    json: {\n      pageIndex: index + 1,\n      pageCount: pages.length,\n      auctionId: recordId,\n      auctionTitle: auctionTitle,\n      pageText: pageText\n    }\n  };\n});"
-			},
-			"id": "split_by_pages",
-			"notes": "Splits the PDF text into individual pages for separate processing. This helps manage the input size for the OpenAI API and improves extraction accuracy."
-		},
-		{
-			"name": "Process PDF with OpenAI",
-			"type": "n8n-nodes-base.openAi",
-			"typeVersion": 1,
-			"position": [950, 300],
-			"parameters": {
-				"authentication": "apiKey",
-				"resource": "chat",
-				"prompt": {
-					"messages": [
-						{
-							"role": "system",
-							"content": "You are a specialized extraction agent for tax surplus auction PDFs. Your task is to analyze the provided PDF text content and extract structured data about foreclosure properties.\n\n## INPUT FORMAT\nYou will receive text extracted from a PDF page containing tabular data about tax foreclosure properties. The data may be formatted differently depending on the county, but generally includes:\n- Parcel numbers\n- Property locations/addresses\n- SBL numbers (formatted like 123.456-7890-123.456-7890)\n- Town/municipality names\n- Sale prices\n- Tax amounts\n- Surplus amounts\n\n## OUTPUT FORMAT\nYou must return ONLY a valid JSON array containing objects with the following structure:\n\n{\n  \"foreclosures\": [\n    {\n      \"Number\": \"string\", // Parcel number (numeric ID)\n      \"SBL\": \"string\", // SBL number in standard format\n      \"Location\": \"string\", // Property address/location\n      \"Town\": \"string\", // Town/municipality name (without \"Town of\" prefix)\n      \"Sale_Price\": number, // Numeric value without $ or commas\n      \"Tax\": number, // Numeric value without $ or commas \n      \"Surplus\": number, // Numeric value without $ or commas\n      \"Index\": \"string\", // Index/deed book number if available\n      \"Owner\": \"string\" // Property owner name if available\n    },\n    // Additional foreclosure objects\n  ]\n}\n\n## EXTRACTION RULES\n\n1. IDENTIFICATION:\n   - Look for tabular data with headers like PARCEL, SBL#, LOCATION, TOWN, SALE PRICE, etc.\n   - Each row typically represents one foreclosure property\n   - Rows often start with a numeric Parcel ID\n\n2. FIELD FORMATTING:\n   - Number: Extract just the numeric ID without leading zeros\n   - SBL: Preserve the full format (e.g., 123.456-7890-123.456-7890)\n   - Location: Properly capitalize addresses (e.g., \"123 Main St\" not \"123 MAIN ST\")\n   - Town: Remove \"Town of\" prefix and properly capitalize (e.g., \"Ulster\" not \"TOWN OF ULSTER\")\n   - Sale_Price/Tax/Surplus: Convert to numeric values (remove $ and commas)\n   - Index: Format as provided (often appears as a numeric ID or formatted like \"2022-1234\")\n   - Owner: Properly capitalize names (e.g., \"John Smith\" not \"JOHN SMITH\")\n\n3. DATA VALIDATION:\n   - Ensure numeric fields contain only numbers\n   - Verify SBL numbers match expected pattern\n   - Ensure all required fields are present, even if empty (\"\")\n   - Financial values must be positive numbers\n\n4. HANDLING VARIATIONS:\n   - Some counties use different column names or formats\n   - Data may span multiple lines for a single property\n   - Columns may be in different orders in different PDFs\n   - Page headers/footers should be ignored\n\n## EXAMPLE IDENTIFICATION\nFor text containing rows like:\n\"123 ULSTER 123 MAIN ST 123.456-7890-123.456-7890 $10,000.00 $5,000.00 $5,000.00\"\n\nYou should recognize:\n- Number: \"123\"\n- Town: \"Ulster\" \n- Location: \"123 Main St\"\n- SBL: \"123.456-7890-123.456-7890\"\n- Sale_Price: 10000\n- Tax: 5000\n- Surplus: 5000\n\nReturn ONLY the JSON array with no additional text, commentary or explanations."
-						},
-						{
-							"role": "user",
-							"content": "={{ \"Here is a page from a tax surplus auction PDF (page \" + $json.pageIndex + \" of \" + $json.pageCount + \"). Extract all the foreclosure property data from this text and return it as JSON following the specified format:\\n\\n\" + $json.pageText }}"
-						}
-					]
-				},
-				"options": {
-					"model": "gpt-4-turbo",
-					"temperature": 0.1,
-					"maxTokens": 8000,
-					"responseFormat": "json_object"
-				}
-			},
-			"id": "openai_process",
-			"credentials": {
-				"openAiApi": {
-					"id": "2jKSIPMC1yrrW9Cx",
-					"name": "OpenAI account"
-				}
-			},
-			"notes": "Sends each PDF page to OpenAI for intelligent parsing. Using GPT-4 with a low temperature for consistent outputs and JSON response format for reliable structure."
-		},
-		{
-			"name": "Combine Results",
-			"type": "n8n-nodes-base.function",
-			"typeVersion": 1,
-			"position": [1100, 300],
-			"parameters": {
-				"functionCode": "// This is a reducer function that will combine all the results from the multiple OpenAI API calls\n// into a single item with all foreclosures\n\n// Initialize an array to store all foreclosures\nlet allForeclosures = [];\n\n// Store the auction ID and title from the first item\nconst auctionId = $input.item(0).json.auctionId || '';\nconst auctionTitle = $input.item(0).json.auctionTitle || '';\n\n// Process each item (page result from OpenAI)\nfor (const item of $input.all()) {\n  try {\n    // Parse the OpenAI response which should be a JSON string or object\n    const aiResponse = item.json.response || item.json.foreclosures || item.json;\n    \n    // Check if we have a JSON string or already parsed object\n    let parsedResponse;\n    if (typeof aiResponse === 'string') {\n      try {\n        parsedResponse = JSON.parse(aiResponse);\n      } catch (e) {\n        console.log('Failed to parse JSON string:', e.message);\n        continue; // Skip this item if we can't parse it\n      }\n    } else {\n      parsedResponse = aiResponse;\n    }\n    \n    // Extract the foreclosures array\n    const foreclosures = parsedResponse.foreclosures || [];\n    \n    if (Array.isArray(foreclosures)) {\n      // For each foreclosure, add the auction relationship before adding to our collection\n      const processedForeclosures = foreclosures.map(f => {\n        // Convert fields to match Airtable expectations\n        return {\n          Number: f.Number || '',\n          SBL: f.SBL || '',\n          Location: f.Location || '',\n          Town: f.Town || '',\n          \"Sale Price\": typeof f.Sale_Price === 'number' ? f.Sale_Price : \n                       (typeof f.Sale_Price === 'string' ? parseFloat(f.Sale_Price) || 0 : 0),\n          Tax: typeof f.Tax === 'number' ? f.Tax : \n               (typeof f.Tax === 'string' ? parseFloat(f.Tax) || 0 : 0),\n          Surplus: typeof f.Surplus === 'number' ? f.Surplus : \n                   (typeof f.Surplus === 'string' ? parseFloat(f.Surplus) || 0 : 0),\n          Auction: [auctionId],  // Link to the auction record\n          Index: f.Index || '',\n          Owner: f.Owner || ''\n        };\n      });\n      \n      // Add to our collection\n      allForeclosures = allForeclosures.concat(processedForeclosures);\n    }\n  } catch (error) {\n    console.log('Error processing page result:', error.message);\n  }\n}\n\n// Filter out any potential duplicates by using Number as the identifier\nconst uniqueForeclosures = allForeclosures.filter((foreclosure, index, self) =>\n  index === self.findIndex((f) => (\n    f.Number === foreclosure.Number && f.SBL === foreclosure.SBL\n  ))\n);\n\n// Return a single item with all the foreclosures\nreturn {\n  json: {\n    auctionId,\n    auctionTitle,\n    foreclosuresCount: uniqueForeclosures.length,\n    notes: `Successfully extracted ${uniqueForeclosures.length} foreclosure records using AI from the PDF.`,\n    foreclosures: uniqueForeclosures\n  }\n};"
-			},
-			"id": "combine_results",
-			"notes": "Combines foreclosure data from all processed PDF pages, removes duplicates, and prepares the data for Airtable record creation."
-		},
-		{
-			"name": "Create Foreclosure Records",
-			"type": "n8n-nodes-base.airtable",
-			"typeVersion": 2,
-			"position": [1250, 300],
-			"parameters": {
-				"resource": "record",
-				"operation": "create",
-				"application": "airtable",
-				"base": {
-					"__rl": true,
-					"value": "appZMhZh6hDrzAnuV",
-					"mode": "list",
-					"cachedResultName": "Tax Surplus Test",
-					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
-				},
-				"table": {
-					"__rl": true,
-					"value": "tblteK8SeHqZ8xQxV",
-					"mode": "list",
-					"cachedResultName": "Foreclosures",
-					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblteK8SeHqZ8xQxV"
-				},
-				"options": {}
-			},
-			"id": "create_foreclosures",
-			"credentials": {
-				"airtableTokenApi": {
-					"id": "KqeYloYYVZeNChgU",
-					"name": "Airtable"
-				}
-			},
-			"notes": "Creates Foreclosure records in Airtable from the AI-parsed PDF data, linking each to the auction it came from."
-		},
-		{
-			"name": "Update Auction",
-			"type": "n8n-nodes-base.airtable",
-			"typeVersion": 2,
-			"position": [1400, 300],
-			"parameters": {
-				"resource": "record",
-				"operation": "update",
-				"application": "airtable",
-				"base": {
-					"__rl": true,
-					"value": "appZMhZh6hDrzAnuV",
-					"mode": "list",
-					"cachedResultName": "Tax Surplus Test",
-					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
-				},
-				"table": {
-					"__rl": true,
-					"value": "tblteK8SeHqZ8xQxV",
-					"mode": "list",
-					"cachedResultName": "Auctions",
-					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblteK8SeHqZ8xQxV"
-				},
-				"id": "={{ $json.auctionId }}",
-				"fields": {
-					"values": [
-						{
-							"name": "Processing Status",
-							"value": "Processed"
-						},
-						{
-							"name": "Processing Notes",
-							"value": "={{ $json.notes }}"
-						},
-						{
-							"name": "Foreclosures Updated",
-							"value": true
-						}
-					]
-				},
-				"options": {}
-			},
-			"id": "update_auction",
-			"credentials": {
-				"airtableTokenApi": {
-					"id": "KqeYloYYVZeNChgU",
-					"name": "Airtable"
-				}
-			},
-			"notes": "Updates the Auction record to indicate processing is complete, sets Foreclosures Updated to true, and adds a note with the count of created records."
-		},
-		{
-			"name": "Workflow Complete",
-			"type": "n8n-nodes-base.noOp",
-			"typeVersion": 1,
-			"position": [1550, 300],
-			"parameters": {
-				"description": "End of the workflow. Foreclosure records have been created in Airtable using AI-powered extraction."
-			},
-			"id": "no_op",
-			"notes": "Workflow complete. Foreclosure records have been created in Airtable and linked to the auction record using OpenAI for intelligent data extraction."
-		}
-	],
-	"pinData": {},
-	"connections": {
-		"Schedule Trigger": {
-			"main": [
-				[
-					{
-						"node": "Get Auctions with Surplus List",
-						"type": "main",
-						"index": 0
-					}
-				]
-			]
-		},
-		"Get Auctions with Surplus List": {
-			"main": [
-				[
-					{
-						"node": "Extract PDF Text",
-						"type": "main",
-						"index": 0
-					}
-				]
-			]
-		},
-		"Extract PDF Text": {
-			"main": [
-				[
-					{
-						"node": "Split PDF by Pages",
-						"type": "main",
-						"index": 0
-					}
-				]
-			]
-		},
-		"Split PDF by Pages": {
-			"main": [
-				[
-					{
-						"node": "Process PDF with OpenAI",
-						"type": "main",
-						"index": 0
-					}
-				]
-			]
-		},
-		"Process PDF with OpenAI": {
-			"main": [
-				[
-					{
-						"node": "Combine Results",
-						"type": "main",
-						"index": 0
-					}
-				]
-			]
-		},
-		"Combine Results": {
-			"main": [
-				[
-					{
-						"node": "Create Foreclosure Records",
-						"type": "main",
-						"index": 0
-					}
-				]
-			]
-		},
-		"Create Foreclosure Records": {
-			"main": [
-				[
-					{
-						"node": "Update Auction",
-						"type": "main",
-						"index": 0
-					}
-				]
-			]
-		},
-		"Update Auction": {
-			"main": [
-				[
-					{
-						"node": "Workflow Complete",
-						"type": "main",
-						"index": 0
-					}
-				]
-			]
-		}
-	},
-	"active": false,
-	"settings": {
-		"executionOrder": "v1"
-	},
-	"id": "TYI9aehJQl3PGEcH",
-	"meta": {
-		"instanceId": "4dba8cd386ae3944b2fc7eaa8a1fd4bf66504415151768c62f3b476b5123f76d"
-	},
-	"tags": []
+  "name": "ROUTER: Auctions",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {}
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        -40
+      ],
+      "id": "schedule_trigger",
+      "notes": "Triggers daily at 7:00 AM to check for auctions with Surplus List data ready for processing."
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appZMhZh6hDrzAnuV",
+          "mode": "list",
+          "cachedResultName": "Tax Surplus Test",
+          "cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblteK8SeHqZ8xQxV",
+          "mode": "list",
+          "cachedResultName": "Auctions",
+          "cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblteK8SeHqZ8xQxV"
+        },
+        "filterByFormula": "AND(NOT({Surplus List}=''),{Foreclosures}='')",
+        "options": {
+          "downloadFields": [
+            "Surplus List"
+          ]
+        }
+      },
+      "name": "Get Auctions with Surplus List",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        470,
+        -40
+      ],
+      "id": "airtable_query",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "KqeYloYYVZeNChgU",
+          "name": "Airtable"
+        }
+      },
+      "notes": "Queries Airtable for auctions that have a Surplus List but don't have any Foreclosures created yet. Downloads the Surplus List attachments."
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "Surplus List_0",
+        "options": {}
+      },
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        690,
+        -40
+      ],
+      "id": "extract_pdf",
+      "notes": "Extracts the text content directly from the PDF attachment using the binary field 'Surplus List_0'."
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appZMhZh6hDrzAnuV",
+          "mode": "list",
+          "cachedResultName": "Tax Surplus Test",
+          "cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblhq8mn3e6u4Ta39",
+          "mode": "list",
+          "cachedResultName": "Foreclosures",
+          "cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblhq8mn3e6u4Ta39"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Number": "={{ $json.Number }}",
+            "Auction": "={{ $json.Auction }}",
+            "Index": "={{ $json.Index }}",
+            "Location": "={{ $json.Location }}",
+            "City": "={{ $json.Town }}",
+            "SBL": "={{ $json.SBL }}",
+            "Tax": "={{ $json.Tax }}",
+            "Sale Price": "={{ $json.Sale_Price }}",
+            "Surplus": "={{ $json.Surplus }}",
+            "Calc Taxes": 0,
+            "Previous Sale Price": 0,
+            "Est Market Value": 0
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Foreclosures",
+              "displayName": "Foreclosures",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "ID",
+              "displayName": "ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Number",
+              "displayName": "Number",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Auction",
+              "displayName": "Auction",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Index",
+              "displayName": "Index",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Location",
+              "displayName": "Location",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "SBL",
+              "displayName": "SBL",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Owners",
+              "displayName": "Owners",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Property",
+              "displayName": "Property",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Calc Taxes",
+              "displayName": "Calc Taxes",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Tax",
+              "displayName": "Tax",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Sale Price",
+              "displayName": "Sale Price",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Surplus",
+              "displayName": "Surplus",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Foreclosure URL",
+              "displayName": "Foreclosure URL",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Property URL",
+              "displayName": "Property URL",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Taxes URL",
+              "displayName": "Taxes URL",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Communications",
+              "displayName": "Communications",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Deed Book",
+              "displayName": "Deed Book",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Deed Page",
+              "displayName": "Deed Page",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Previous Sale Date",
+              "displayName": "Previous Sale Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Previous Sale Price",
+              "displayName": "Previous Sale Price",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Lot Size",
+              "displayName": "Lot Size",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Property Class",
+              "displayName": "Property Class",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Est Market Value",
+              "displayName": "Est Market Value",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Est Surplus",
+              "displayName": "Est Surplus",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Est Investable",
+              "displayName": "Est Investable",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Est Payout",
+              "displayName": "Est Payout",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Calc Surplus",
+              "displayName": "Calc Surplus",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Calc Investable",
+              "displayName": "Calc Investable",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Calc Payout",
+              "displayName": "Calc Payout",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Claims",
+              "displayName": "Claims",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "name": "Create Foreclosure Records",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        1506,
+        -40
+      ],
+      "id": "create_foreclosures",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "KqeYloYYVZeNChgU",
+          "name": "Airtable"
+        }
+      },
+      "notes": "Creates Foreclosure records in Airtable from the AI-parsed PDF data, linking each to the auction it came from."
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appZMhZh6hDrzAnuV",
+          "mode": "list",
+          "cachedResultName": "Tax Surplus Test",
+          "cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblteK8SeHqZ8xQxV",
+          "mode": "list",
+          "cachedResultName": "Auctions",
+          "cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblteK8SeHqZ8xQxV"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.Auctions[0] }}",
+            "Properties Updated": false,
+            "Surpluses Calculated": false,
+            "Contacts Created": false,
+            "Properties Created": false,
+            "Motions Checked": false,
+            "Communications Created": false,
+            "Foreclosures Updated": true
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Auction",
+              "displayName": "Auction",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "ID",
+              "displayName": "ID",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "County",
+              "displayName": "County",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Open Date",
+              "displayName": "Open Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Close Date",
+              "displayName": "Close Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Site",
+              "displayName": "Site",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Foreclosure List",
+              "displayName": "Foreclosure List",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Sold List",
+              "displayName": "Sold List",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Surplus List",
+              "displayName": "Surplus List",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Modified",
+              "displayName": "Modified",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Foreclosed",
+              "displayName": "Foreclosed",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Sold",
+              "displayName": "Sold",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Surpluses",
+              "displayName": "Surpluses",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Investables",
+              "displayName": "Investables",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Est. Surplus",
+              "displayName": "Est. Surplus",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Surplus",
+              "displayName": "Surplus",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Foreclosures",
+              "displayName": "Foreclosures",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Before",
+              "displayName": "Before",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "During",
+              "displayName": "During",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "After",
+              "displayName": "After",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Foreclosures Created",
+              "displayName": "Foreclosures Created",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Foreclosures Updated",
+              "displayName": "Foreclosures Updated",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Properties Updated",
+              "displayName": "Properties Updated",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Surpluses Calculated",
+              "displayName": "Surpluses Calculated",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Contacts Created",
+              "displayName": "Contacts Created",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Properties Created",
+              "displayName": "Properties Created",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Motions Checked",
+              "displayName": "Motions Checked",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Communications Created",
+              "displayName": "Communications Created",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Services",
+              "displayName": "Services",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "name": "Update Auction",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        1946,
+        -40
+      ],
+      "id": "update_auction",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "KqeYloYYVZeNChgU",
+          "name": "Airtable"
+        }
+      },
+      "disabled": true,
+      "notes": "Updates the Auction record to indicate processing is complete, sets Foreclosures Updated to true, and adds a note with the count of created records."
+    },
+    {
+      "parameters": {},
+      "name": "Workflow Complete",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2166,
+        -40
+      ],
+      "id": "no_op",
+      "notes": "Workflow complete. Foreclosure records have been created in Airtable and linked to the auction record using OpenAI for intelligent data extraction."
+    },
+    {
+      "parameters": {
+        "resource": "assistant",
+        "assistantId": {
+          "__rl": true,
+          "value": "asst_ahWOeHqXTI7mBhDmjyI6sMPt",
+          "mode": "list",
+          "cachedResultName": "Surplus List Parser"
+        },
+        "prompt": "define",
+        "text": "={{ JSON.stringify($json.text) }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        910,
+        -40
+      ],
+      "id": "9c044ef2-8c7b-4cf9-9533-65ae3460b5a7",
+      "name": "OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "HFwgA9BCeGDGbHNN",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $json[\"output\"];\nconst auctionValue = $('Get Auctions with Surplus List').item.json.id;\n\nconst cleaned = response.replace(/^```json|```$/g, '').trim();\nconst jsonOutput = JSON.parse(cleaned);\n\n// Assuming the root is an object with a \"foreclosures\" array:\nconst foreclosures = jsonOutput.foreclosures.map(item => ({\n  ...item,\n  Auction: [auctionValue]\n}));\n\n// Return multiple items correctly\nreturn foreclosures.map(item => ({ json: item }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1286,
+        -40
+      ],
+      "id": "1a81ef92-da4d-4202-96b2-de8a194d7a91",
+      "name": "Transform to JSON"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    Auctions: $('Get Auctions with Surplus List').all().map(item => item.json.id)\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1726,
+        -40
+      ],
+      "id": "45ee87a8-6469-4bd9-a956-e55d14af6807",
+      "name": "Consolidate to Auctions",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "content": "## Auto Determined ",
+        "height": 80,
+        "width": 320
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1720,
+        -160
+      ],
+      "id": "0a91a7ba-f62f-4609-aa50-f549fac5976d",
+      "name": "Sticky Note"
+    }
+  ],
+  "pinData": {
+    "Extract PDF Text": [
+      {
+        "json": {
+          "numpages": 3,
+          "numrender": 3,
+          "info": {
+            "PDFFormatVersion": "1.7",
+            "Language": "en",
+            "EncryptFilterName": null,
+            "IsLinearized": false,
+            "IsAcroFormPresent": false,
+            "IsXFAPresent": false,
+            "IsCollectionPresent": false,
+            "IsSignaturesPresent": false,
+            "Author": "Max Cordella",
+            "CreationDate": "D:20241016121926-04'00'",
+            "ModDate": "D:20241016121926-04'00'",
+            "Producer": "Microsoft® Excel® for Microsoft 365",
+            "Creator": "Microsoft® Excel® for Microsoft 365"
+          },
+          "metadata": {
+            "pdf:producer": "Microsoft® Excel® for Microsoft 365",
+            "dc:creator": [
+              "Max Cordella"
+            ],
+            "xmp:creatortool": "Microsoft® Excel® for Microsoft 365",
+            "xmp:createdate": "2024-10-16T12:19:26-04:00",
+            "xmp:modifydate": "2024-10-16T12:19:26-04:00",
+            "xmpmm:documentid": "uuid:D89ABCB9-BDFF-4D9E-B5E1-C239DE2B8B36",
+            "xmpmm:instanceid": "uuid:D89ABCB9-BDFF-4D9E-B5E1-C239DE2B8B36"
+          },
+          "text": "PARCEL: TOWN: SBL#: INDEX # LOCATION:\nOLDEST\nYEAR OF\nTAX:\nACCEPT:\nSUM OF\nDELINQUENT TAX\nINCL. CHARGES PER\nNYS RPTL Sec. 1102\nSURPLUS FUNDS\n2 \nESOPUS 056.051-0003-006.000-0000 \n2021-3086 \n114 BROADWAY/ROUTE 9W 2021 G \n$183,000.00 $8,564.49 $174,435.51\n3 \nESOPUS 056.060-0002-007.000-0000 \n2021-3086 \nCANAL ST 2021 G \n$36,000.00 $2,069.59 $33,930.41\n4 \nESOPUS 056.067-0005-004.000-0000 \n2021-3086 \n198 BROADWAY/ROUTE 9W 2021 G \n$146,000.00 $17,124.31 $128,875.69\n5 ESOPUS 063.002-0002-018.000-0000 2021-3086 ESOPUS AVE 2021 G $13,000.00 $2,187.80 $10,812.20\n9 \nESOPUS 071.003-0003-008.000-0000 \n2021-3086 \nOLD POST RD 2021 G \n$13,008.00 $2,262.15 $10,745.85\n10 ESOPUS 071.030-0002-035.000-0000 2021-3086 14 MAPLE ST 2021 G $166,000.00 $8,257.98 $157,742.02\n13 \nGARDINER 093.002-0001-019.000-0000 \n2021-3086 \n833 ALBANY POST RD 2021 G \n$102,000.00 $9,144.09 $92,855.91\n16 HURLEY 046.002-0001-003.000-0000 2018-3980 OFF BAKER RD 2018 G $3,000.00 $575.96 $2,424.04\n18 \nHURLEY 047.002-0007-031.000-0000 \n2018-3980 \nOFF BRUCKEN RD 2018 G \n$3,000.00 $540.56 $2,459.44\n27 \nLLOYD 087.008-0001-005.000-0000 \n2017-3146 \n245 UPPER NORTH RD 2017 G \n$160,000.00 $73,029.42 $86,970.58\n30 \nLLOYD 088.013-0012-011.100-0000 \n2018-3980 \n40 GRAND ST 2018 G \n$120,000.00 $47,814.64 $72,185.36\n31 \nLLOYD 088.017-0005-023.000-0000 \n2018-3980 \n25 MILE HILL RD 2018 G \n$181,000.00 $84,933.00 $96,067.00\n32 \nLLOYD 094.002-0004-008.000-0000 \n2020-2839 \n6 JOAN PL 2020 G \n$112,000.00 $17,544.08 $94,455.92\n33 \nLLOYD 095.002-0009-006.000-0000 \n2019-3784 \n423 VINEYARD AVE 2019 G \n$10,000.00 $9,147.19 $852.81\n36 \nMARBLETOWN 061.004-0003-058.000-0000 \n2020-2839 \nMARYLAND CT 2020 G \n$4,034.00 $708.74 $3,325.26\n37 \nMARBLETOWN 070.003-0005-027.000-0000 \n2021-3086 \nMOHONK RD 2021 G \n$8,055.00 $409.97 $7,645.03\n38 \nMARLBOROUGH 095.004-0001-037.000-0000 2021-3086 222 MILTON CROSS RD 2021 G \n$99,000.00 $24,309.27 $74,690.73\n40 \nMARLBOROUGH 102.002-0006-015.112-0000 \n2020-2839 \n23 CONKLIN HILL RD 2020 G \n$64,000.00 $10,690.74 $53,309.26\n41 \nMARLBOROUGH 102.002-0007-011.000-0000 \n2020-2839 \n13 BILL'S LN 2016 G \n$46,480.00 $36,804.06 $9,675.94\n42 \nMARLBOROUGH 102.002-0007-016.000-0000 \n2020-2839 \n3 BILL'S LN 2020 G \n$48,485.00 $19,185.21 $29,299.79\n46 \nMARLBOROUGH 108.002-0004-022.000-0000 \n2019-3784 \nRIDGE RD 2015 G \n$21,000.00 $16,160.86 $4,839.14\n47 \nMARLBOROUGH 108.002-0008-051.000-0000 \n2020-2839 \nSHARI DR 2020 G \n$21,246.00 $12,820.94 $8,425.06\n50 \nMARLBOROUGH 108.004-0007-025.310-0000 \n2021-3086 \n1 ROSA DR 2021 G \n$104,000.00 $36,107.61 $67,892.39\n51 \nMARLBOROUGH 108.004-0009-033.000-0000 \n2021-3086 \n312 LATTINTOWN RD 2021 G \n$89,000.00 $19,043.19 $69,956.81\n54 \nNEW PALTZ 086.016-0003-006.200-0000 \n2020-2839 \nS OHIOVILLE RD 2020 G \n$3,079.00 $753.82 $2,325.18\n57 \nOLIVE 036.007-0001-019.000-0000 \n2021-3086 \n4 BEECHFORD DR 2021 G \n$144,000.00 $5,248.31 $138,751.69\n58 \nOLIVE 045.001-0002-034.215-0000 \n2015-3377 \nMEADOW LN / BURGHER RD 2015 G \n$34,000.00 $23,255.19 $10,744.81\n60 OLIVE 046.005-0003-037.000-0000 2020-2839 29 RESERVOIR RD 2020 G $85,000.00 $11,570.00 $73,430.00\n62 \nPLATTEKILL 094.020-0003-035.000-0000 \n2021-3086 \n1094 MILTON TPK 2021 G \n$99,000.00 $7,198.08 $91,801.92\n63 \nPLATTEKILL 095.001-0003-032.001-0000 \n2017-3146 \n597 RT 44 55 2015 G \n$164,000.00 $89,377.55 $74,622.45\n65 \nPLATTEKILL 101.003-0003-007.000-0000 \n2019-3784 \nRT 32 2019 G \n$11,000.00 $1,030.07 $9,969.93\n66 \nPLATTEKILL 101.004-0002-018.000-0000 \n2021-3086 \nFREETOWN HWY 2021 G \n$1,800.00 $1,141.57 $658.43\n69 \nPLATTEKILL 102.003-0001-009.000-0000 \n2021-3086 \nSOUTH ST 2021 G \n$29,000.00 $7,110.13 $21,889.87\n70 \nPLATTEKILL 102.003-0003-017.000-0000 \n2020-2839 \nLEWIS LN 2020 G \n$6,088.00 $1,162.07 $4,925.93\n71 \nPLATTEKILL 107.008-0003-003.000-0000 \n2020-2839 \n124 NEW UNIONVILLE RD 2018 G \n$147,000.00 $34,680.43 $112,319.57\n72 PLATTEKILL 108.003-0001-011.000-0000 2021-3086 HUCKLEBERRY TPK 2021 G $6,000.00 $886.13 $5,113.87\n73 \nROCHESTER 059.012-0002-004.000-0000 \n2020-2839 \n4 TRAILS END RD 2020 G \n$228,000.00 $33,246.99 $194,753.01\n\nPARCEL: TOWN: SBL#: INDEX # LOCATION:\nOLDEST\nYEAR OF\nTAX:\nACCEPT:\nSUM OF\nDELINQUENT TAX\nINCL. CHARGES PER\nNYS RPTL Sec. 1102\nSURPLUS FUNDS\n74 \nROCHESTER 068.013-0003-029.000-0000 2021-3086 FRIEDLANDER DR 2021 G \n$547.00 $301.75 $245.25\n77 \nROCHESTER 077.009-0001-024.200-0000 \n2014-3482 \n11 TOW PATH RD 2011 G \n$452,000.00 $231,127.68 $220,872.32\n79 \nROSENDALE 062.020-0001-026.000-0000 \n2021-3086 \nDELLAY AVE 2021 G \n$1,600.00 $336.40 $1,263.60\n80 \nROSENDALE 070.001-0003-006.000-0000 \n2020-2839 \nMOUNTAIN RD 2020 G \n$41,213.00 $4,787.97 $36,425.03\n84 \nSAUGERTIES 002.003-0002-001.000-0000 \n2020-2839 \nMANORVILLE RD 2020 G \n$210,000.00 $28,697.20 $181,302.80\n88 \nSAUGERTIES 009.003-0007-043.000-0000 \n2021-3086 \nOFF MALDEN TPKE 2021 G \n$20,000.00 $5,832.86 $14,167.14\n89 \nSAUGERTIES 017.005-0001-009.000-0000 \n2019-3784 \n333 WEST SAUGERTIES RD 2019 G \n$126,000.00 $32,762.67 $93,237.33\n91 \nSAUGERTIES 018.077-0007-058.000-0000 \n2018-3980 \n5 APPLETREE DR 2018 G \n$185,000.00 $65,793.72 $119,206.28\n95 \nSAUGERTIES 028.003-0008-031.000-0000 \n2020-2839 \nCHURCH ST RUBY 2020 G \n$16,000.00 $1,395.12 $14,604.88\n100 \nSAUGERTIES 029.021-0002-030.000-0000 \n2019-3784 \nAUSTIN AVE 2019 G \n$16,000.00 $1,357.90 $14,642.10\n102 \nSHANDAKEN 004.014-0001-033.000-0000 \n2019-3784 \nROUTE 28 2019 G \n$7,500.00 $4,403.95 $3,096.05\n103 \nSHANDAKEN 004.045-0001-017.000-0000 \n2020-2839 \nDEPOT ST 2020 G \n$8,000.00 $1,974.27 $6,025.73\n104 \nSHANDAKEN 005.001-0002-019.000-0000 \n2019-3784 \n228 ROUTE 42 2019 G \n$41,000.00 $4,899.74 $36,100.26\n105 \nSHANDAKEN 012.007-0002-011.000-0000 \n2019-3784 \n8181 ROUTE 28 2017 G \n$81,000.00 $27,202.63 $53,797.37\n107 SHANDAKEN 013.012-0001-048.000-0000 2021-3086 GARFIELD RD 2021 G $11,000.00 $814.98 $10,185.02\n108 SHANDAKEN 013.012-0002-024.000-0000 2021-3086 ROUTE 214 2021 G $17,000.00 $1,057.40 $15,942.60\n109 \nSHANDAKEN 023.000-0002-031.000-0000 \n2021-3086 \nOLIVEREA RD 2021 G \n$62,000.00 $8,122.11 $53,877.89\n111 SHAWANGUNK 098.018-0002-017.000-0000 2020-2839 3634 ROUTE 52 2020 G $52,000.00 $12,855.43 $39,144.58\n118 \nULSTER 039.001-0004-003.000-0000 \n2020-2839 \n1231 MAIN ST 2019 G \n$82,000.00 $36,365.85 $45,634.15\n119 ULSTER 039.006-0003-011.000-0000 2021-3086 OFF SOUTH RD 2021 G $2,928.00 $2,682.75 $245.25\n122 \nULSTER 039.012-0004-012.211-0000 \n2020-2839 \n1448 ROUTE 32 2019 G \n$38,000.00 $7,834.97 $30,165.03\n123 \nULSTER 047.002-0003-003.000-0000 \n2021-3086 \n256 ROUTE 28A 2021 G \n$184,000.00 $17,011.55 $166,988.45\n124 \nULSTER 047.026-0001-011.000-0000 2021-3086 ROUTE 28A 2021 G \n$1,102.00 $556.83 $545.17\n125 \nULSTER 047.026-0001-012.000-0000 2021-3086 ROUTE 28A 2021 G \n$1,002.00 $556.83 $445.17\n127 \nULSTER 048.008-0001-034.400-0000 \n2021-3086 \nOFF FRANK SOTTILE BLVD 2021 G \n$48,000.00 $7,928.80 $40,071.20\n130 \nULSTER 048.052-0005-010.000-0000 \n2021-3086 \n136 JOHN ST 2021 G \n$24,000.00 $3,998.19 $20,001.81\n131 \nULSTER 056.013-0001-014.000-0000 \n2017-3146 \n106 PETTICOAT LN 2017 G \n$138,000.00 $51,189.74 $86,810.26\n133 ULSTER 056.071-0002-001.000-0000 2021-3086 170 MOUNTAIN RD \n2018/2019\nS \n$111,000.00 $15,716.17 $95,283.83\n143 \nWAWARSING 076.013-0002-045.000-0000 \n2020-2839 \nGRANDVIEW AVE 2020 G \n$5,980.00 $2,054.69 $3,925.31\n144 \nWAWARSING 076.013-0004-040.000-0000 \n2019-3784 \n13 WOOD ST 2019 G \n$15,000.00 $5,013.53 $9,986.47\n145 \nWAWARSING 076.013-0007-021.000-0000 \n2019-3784 \nWOOD ST 2019 G \n$13,000.00 $5,042.71 $7,957.29\n146 \nWAWARSING 081.001-0002-015.000-0000 \n2020-2839 \nMILK RD 2020 G \n$132,000.00 $19,168.69 $112,831.31\n147 \nWAWARSING 082.004-0003-054.000-0000 \n2021-3086 \nVAN KEUREN RD 2021 G \n$7,000.00 $626.78 $6,373.22\n150 \nWAWARSING 083.002-0001-047.000-0000 \n2020-2839 \n7261 RT 209 2018 G \n$129,000.00 $28,233.75 $100,766.25\n151 \nWAWARSING 083.006-0001-013.000-0000 \n2020-2839 \n112 RT 55 2020 G \n$132,000.00 $29,426.99 $102,573.01\n153 \nWAWARSING 083.034-0001-009.000-0000 \n2021-3086 \n148 PORT BEN RD 2021 G \n$151,000.00 $13,904.62 $137,095.38\n154 \nWAWARSING 084.006-0001-026.000-0000 \n2020-2839 \n6 LESLIE LN 2020 G \n$164,000.00 $16,952.77 $147,047.23\n\nPARCEL: TOWN: SBL#: INDEX # LOCATION:\nOLDEST\nYEAR OF\nTAX:\nACCEPT:\nSUM OF\nDELINQUENT TAX\nINCL. CHARGES PER\nNYS RPTL Sec. 1102\nSURPLUS FUNDS\n139 \nWAWARSING 091.022-0009-026.000-0000 \n2020-2839 \n174 CENTER ST 2020 G \n$140,000.00 $46,306.79 $93,693.21\n157 \nWAWARSING 097.002-0002-026.100-0000 \n2021-3086 \nRT 209 2021 G \n$52,000.00 $9,291.57 $42,708.43\n158 WAWARSING 098.001-0002-040.000-0000 2020-2839 \nOLD QUEENS HWY NOW OFF OF CLARK\nROAD \n2020 G $19,000.00 $5,355.83 $13,644.17\n159 \nWOODSTOCK 014.000-0002-019.000-0000 \n2021-3086 \n49 VANWAGNER RD 2021 G \n$355,000.00 $42,493.59 $312,506.41\n160 \nWOODSTOCK 015.003-0003-019.000-0000 \n2021-3086 \nVANWAGNER RD 2021 G \n$60,000.00 $3,415.63 $56,584.37\n161 \nWOODSTOCK 015.003-0003-020.000-0000 \n2021-3086 \nVANWAGNER RD 2021 G \n$68,000.00 $4,321.60 $63,678.40\n163 \nWOODSTOCK 027.002-0001-023.100-0000 \n2021-3086 \nGLASCO TPKE 2021 G \n$236,000.00 $24,821.70 $211,178.30",
+          "version": "2.16.105"
+        }
+      }
+    ],
+    "OpenAI": [
+      {
+        "json": {
+          "output": "{\"foreclosures\":[{\"Number\":\"2\",\"SBL\":\"056.051-0003-006.000-0000\",\"Location\":\"114 Broadway/Route 9W\",\"Town\":\"Esopus\",\"Sale_Price\":183000,\"Tax\":8564.49,\"Surplus\":174435.51,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"3\",\"SBL\":\"056.060-0002-007.000-0000\",\"Location\":\"Canal St\",\"Town\":\"Esopus\",\"Sale_Price\":36000,\"Tax\":2069.59,\"Surplus\":33930.41,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"4\",\"SBL\":\"056.067-0005-004.000-0000\",\"Location\":\"198 Broadway/Route 9W\",\"Town\":\"Esopus\",\"Sale_Price\":146000,\"Tax\":17124.31,\"Surplus\":128875.69,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"5\",\"SBL\":\"063.002-0002-018.000-0000\",\"Location\":\"Esopus Ave\",\"Town\":\"Esopus\",\"Sale_Price\":13000,\"Tax\":2187.8,\"Surplus\":10812.2,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"9\",\"SBL\":\"071.003-0003-008.000-0000\",\"Location\":\"Old Post Rd\",\"Town\":\"Esopus\",\"Sale_Price\":13008,\"Tax\":2262.15,\"Surplus\":10745.85,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"10\",\"SBL\":\"071.030-0002-035.000-0000\",\"Location\":\"14 Maple St\",\"Town\":\"Esopus\",\"Sale_Price\":166000,\"Tax\":8257.98,\"Surplus\":157742.02,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"13\",\"SBL\":\"093.002-0001-019.000-0000\",\"Location\":\"833 Albany Post Rd\",\"Town\":\"Gardiner\",\"Sale_Price\":102000,\"Tax\":9144.09,\"Surplus\":92855.91,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"16\",\"SBL\":\"046.002-0001-003.000-0000\",\"Location\":\"Off Baker Rd\",\"Town\":\"Hurley\",\"Sale_Price\":3000,\"Tax\":575.96,\"Surplus\":2424.04,\"Index\":\"2018-3980\",\"Owner\":\"\"},{\"Number\":\"18\",\"SBL\":\"047.002-0007-031.000-0000\",\"Location\":\"Off Bruecken Rd\",\"Town\":\"Hurley\",\"Sale_Price\":3000,\"Tax\":540.56,\"Surplus\":2459.44,\"Index\":\"2018-3980\",\"Owner\":\"\"},{\"Number\":\"27\",\"SBL\":\"087.008-0001-005.000-0000\",\"Location\":\"245 Upper North Rd\",\"Town\":\"Lloyd\",\"Sale_Price\":160000,\"Tax\":73029.42,\"Surplus\":86970.58,\"Index\":\"2017-3146\",\"Owner\":\"\"},{\"Number\":\"30\",\"SBL\":\"088.013-0012-011.100-0000\",\"Location\":\"40 Grand St\",\"Town\":\"Lloyd\",\"Sale_Price\":120000,\"Tax\":47814.64,\"Surplus\":72185.36,\"Index\":\"2018-3980\",\"Owner\":\"\"},{\"Number\":\"31\",\"SBL\":\"088.017-0005-023.000-0000\",\"Location\":\"25 Mile Hill Rd\",\"Town\":\"Lloyd\",\"Sale_Price\":181000,\"Tax\":84933,\"Surplus\":96067,\"Index\":\"2018-3980\",\"Owner\":\"\"},{\"Number\":\"32\",\"SBL\":\"094.002-0004-008.000-0000\",\"Location\":\"6 Joan Pl\",\"Town\":\"Lloyd\",\"Sale_Price\":112000,\"Tax\":17544.08,\"Surplus\":94455.92,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"33\",\"SBL\":\"095.002-0009-006.000-0000\",\"Location\":\"423 Vineyard Ave\",\"Town\":\"Lloyd\",\"Sale_Price\":10000,\"Tax\":9147.19,\"Surplus\":852.81,\"Index\":\"2019-3784\",\"Owner\":\"\"},{\"Number\":\"36\",\"SBL\":\"061.004-0003-058.000-0000\",\"Location\":\"Maryland Ct\",\"Town\":\"Marbletown\",\"Sale_Price\":4034,\"Tax\":708.74,\"Surplus\":3325.26,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"37\",\"SBL\":\"070.003-0005-027.000-0000\",\"Location\":\"Mohonk Rd\",\"Town\":\"Marbletown\",\"Sale_Price\":8055,\"Tax\":409.97,\"Surplus\":7645.03,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"38\",\"SBL\":\"095.004-0001-037.000-0000\",\"Location\":\"222 Milton Cross Rd\",\"Town\":\"Marlborough\",\"Sale_Price\":99000,\"Tax\":24309.27,\"Surplus\":74690.73,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"40\",\"SBL\":\"102.002-0006-015.112-0000\",\"Location\":\"23 Conklin Hill Rd\",\"Town\":\"Marlborough\",\"Sale_Price\":64000,\"Tax\":10690.74,\"Surplus\":53309.26,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"41\",\"SBL\":\"102.002-0007-011.000-0000\",\"Location\":\"13 Bill's Ln\",\"Town\":\"Marlborough\",\"Sale_Price\":46480,\"Tax\":36804.06,\"Surplus\":9675.94,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"42\",\"SBL\":\"102.002-0007-016.000-0000\",\"Location\":\"3 Bill's Ln\",\"Town\":\"Marlborough\",\"Sale_Price\":48485,\"Tax\":19185.21,\"Surplus\":29299.79,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"46\",\"SBL\":\"108.002-0004-022.000-0000\",\"Location\":\"Ridge Rd\",\"Town\":\"Marlborough\",\"Sale_Price\":21000,\"Tax\":16160.86,\"Surplus\":4839.14,\"Index\":\"2019-3784\",\"Owner\":\"\"},{\"Number\":\"47\",\"SBL\":\"108.002-0008-051.000-0000\",\"Location\":\"Shari Dr\",\"Town\":\"Marlborough\",\"Sale_Price\":21246,\"Tax\":12820.94,\"Surplus\":8425.06,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"50\",\"SBL\":\"108.004-0007-025.310-0000\",\"Location\":\"1 Rosa Dr\",\"Town\":\"Marlborough\",\"Sale_Price\":104000,\"Tax\":36107.61,\"Surplus\":67892.39,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"51\",\"SBL\":\"108.004-0009-033.000-0000\",\"Location\":\"312 Lattintown Rd\",\"Town\":\"Marlborough\",\"Sale_Price\":89000,\"Tax\":19043.19,\"Surplus\":69956.81,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"54\",\"SBL\":\"086.016-0003-006.200-0000\",\"Location\":\"S Ohioville Rd\",\"Town\":\"New Paltz\",\"Sale_Price\":3079,\"Tax\":753.82,\"Surplus\":2325.18,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"57\",\"SBL\":\"036.007-0001-019.000-0000\",\"Location\":\"4 Beechford Dr\",\"Town\":\"Olive\",\"Sale_Price\":144000,\"Tax\":5248.31,\"Surplus\":138751.69,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"58\",\"SBL\":\"045.001-0002-034.215-0000\",\"Location\":\"Meadow Ln / Burgher Rd\",\"Town\":\"Olive\",\"Sale_Price\":34000,\"Tax\":23255.19,\"Surplus\":10744.81,\"Index\":\"2015-3377\",\"Owner\":\"\"},{\"Number\":\"60\",\"SBL\":\"046.005-0003-037.000-0000\",\"Location\":\"29 Reservoir Rd\",\"Town\":\"Olive\",\"Sale_Price\":85000,\"Tax\":11570,\"Surplus\":73430,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"62\",\"SBL\":\"094.020-0003-035.000-0000\",\"Location\":\"1094 Milton Tpk\",\"Town\":\"Plattekill\",\"Sale_Price\":99000,\"Tax\":7198.08,\"Surplus\":91801.92,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"63\",\"SBL\":\"095.001-0003-032.001-0000\",\"Location\":\"597 RT 44 55\",\"Town\":\"Plattekill\",\"Sale_Price\":164000,\"Tax\":89377.55,\"Surplus\":74622.45,\"Index\":\"2017-3146\",\"Owner\":\"\"},{\"Number\":\"65\",\"SBL\":\"101.003-0003-007.000-0000\",\"Location\":\"RT 32\",\"Town\":\"Plattekill\",\"Sale_Price\":11000,\"Tax\":1030.07,\"Surplus\":9969.93,\"Index\":\"2019-3784\",\"Owner\":\"\"},{\"Number\":\"66\",\"SBL\":\"101.004-0002-018.000-0000\",\"Location\":\"Freetown Hwy\",\"Town\":\"Plattekill\",\"Sale_Price\":1800,\"Tax\":1141.57,\"Surplus\":658.43,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"69\",\"SBL\":\"102.003-0001-009.000-0000\",\"Location\":\"South St\",\"Town\":\"Plattekill\",\"Sale_Price\":29000,\"Tax\":7110.13,\"Surplus\":21889.87,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"70\",\"SBL\":\"102.003-0003-017.000-0000\",\"Location\":\"Lewis Ln\",\"Town\":\"Plattekill\",\"Sale_Price\":6088,\"Tax\":1162.07,\"Surplus\":4925.93,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"71\",\"SBL\":\"107.008-0003-003.000-0000\",\"Location\":\"124 New Unionville Rd\",\"Town\":\"Plattekill\",\"Sale_Price\":147000,\"Tax\":34680.43,\"Surplus\":112319.57,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"72\",\"SBL\":\"108.003-0001-011.000-0000\",\"Location\":\"Huckleberry Tpk\",\"Town\":\"Plattekill\",\"Sale_Price\":6000,\"Tax\":886.13,\"Surplus\":5113.87,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"73\",\"SBL\":\"059.012-0002-004.000-0000\",\"Location\":\"4 Trails End Rd\",\"Town\":\"Rochester\",\"Sale_Price\":228000,\"Tax\":33246.99,\"Surplus\":194753.01,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"74\",\"SBL\":\"068.013-0003-029.000-0000\",\"Location\":\"Friedlander Dr\",\"Town\":\"Rochester\",\"Sale_Price\":547,\"Tax\":301.75,\"Surplus\":245.25,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"77\",\"SBL\":\"077.009-0001-024.200-0000\",\"Location\":\"11 Tow Path Rd\",\"Town\":\"Rochester\",\"Sale_Price\":452000,\"Tax\":231127.68,\"Surplus\":220872.32,\"Index\":\"2014-3482\",\"Owner\":\"\"},{\"Number\":\"79\",\"SBL\":\"062.020-0001-026.000-0000\",\"Location\":\"Dellay Ave\",\"Town\":\"Rosendale\",\"Sale_Price\":1600,\"Tax\":336.4,\"Surplus\":1263.6,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"80\",\"SBL\":\"070.001-0003-006.000-0000\",\"Location\":\"Mountain Rd\",\"Town\":\"Rosendale\",\"Sale_Price\":41213,\"Tax\":4787.97,\"Surplus\":36425.03,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"84\",\"SBL\":\"002.003-0002-001.000-0000\",\"Location\":\"Manorville Rd\",\"Town\":\"Saugerties\",\"Sale_Price\":210000,\"Tax\":28697.2,\"Surplus\":181302.8,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"88\",\"SBL\":\"009.003-0007-043.000-0000\",\"Location\":\"Off Malden Tpke\",\"Town\":\"Saugerties\",\"Sale_Price\":20000,\"Tax\":5832.86,\"Surplus\":14167.14,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"89\",\"SBL\":\"017.005-0001-009.000-0000\",\"Location\":\"333 West Saugerties Rd\",\"Town\":\"Saugerties\",\"Sale_Price\":126000,\"Tax\":32762.67,\"Surplus\":93237.33,\"Index\":\"2019-3784\",\"Owner\":\"\"},{\"Number\":\"91\",\"SBL\":\"018.077-0007-058.000-0000\",\"Location\":\"5 Appletree Dr\",\"Town\":\"Saugerties\",\"Sale_Price\":185000,\"Tax\":65793.72,\"Surplus\":119206.28,\"Index\":\"2018-3980\",\"Owner\":\"\"},{\"Number\":\"95\",\"SBL\":\"028.003-0008-031.000-0000\",\"Location\":\"Church St Ruby\",\"Town\":\"Saugerties\",\"Sale_Price\":16000,\"Tax\":1395.12,\"Surplus\":14604.88,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"100\",\"SBL\":\"029.021-0002-030.000-0000\",\"Location\":\"Austin Ave\",\"Town\":\"Saugerties\",\"Sale_Price\":16000,\"Tax\":1357.9,\"Surplus\":14642.1,\"Index\":\"2019-3784\",\"Owner\":\"\"},{\"Number\":\"102\",\"SBL\":\"004.014-0001-033.000-0000\",\"Location\":\"Route 28\",\"Town\":\"Shandaken\",\"Sale_Price\":7500,\"Tax\":4403.95,\"Surplus\":3096.05,\"Index\":\"2019-3784\",\"Owner\":\"\"},{\"Number\":\"103\",\"SBL\":\"004.045-0001-017.000-0000\",\"Location\":\"Depot St\",\"Town\":\"Shandaken\",\"Sale_Price\":8000,\"Tax\":1974.27,\"Surplus\":6025.73,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"104\",\"SBL\":\"005.001-0002-019.000-0000\",\"Location\":\"228 Route 42\",\"Town\":\"Shandaken\",\"Sale_Price\":41000,\"Tax\":4899.74,\"Surplus\":36100.26,\"Index\":\"2019-3784\",\"Owner\":\"\"},{\"Number\":\"105\",\"SBL\":\"012.007-0002-011.000-0000\",\"Location\":\"8181 Route 28\",\"Town\":\"Shandaken\",\"Sale_Price\":81000,\"Tax\":27202.63,\"Surplus\":53797.37,\"Index\":\"2019-3784\",\"Owner\":\"\"},{\"Number\":\"107\",\"SBL\":\"013.012-0001-048.000-0000\",\"Location\":\"Garfield Rd\",\"Town\":\"Shandaken\",\"Sale_Price\":11000,\"Tax\":814.98,\"Surplus\":10185.02,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"108\",\"SBL\":\"013.012-0002-024.000-0000\",\"Location\":\"Route 214\",\"Town\":\"Shandaken\",\"Sale_Price\":17000,\"Tax\":1057.4,\"Surplus\":15942.6,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"109\",\"SBL\":\"023.000-0002-031.000-0000\",\"Location\":\"Olive Tea Rd\",\"Town\":\"Shandaken\",\"Sale_Price\":62000,\"Tax\":8122.11,\"Surplus\":53877.89,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"111\",\"SBL\":\"098.018-0002-017.000-0000\",\"Location\":\"3634 Route 52\",\"Town\":\"Shawangunk\",\"Sale_Price\":52000,\"Tax\":12855.43,\"Surplus\":39144.58,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"118\",\"SBL\":\"039.001-0004-003.000-0000\",\"Location\":\"1231 Main St\",\"Town\":\"Ulster\",\"Sale_Price\":82000,\"Tax\":36365.85,\"Surplus\":45634.15,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"119\",\"SBL\":\"039.006-0003-011.000-0000\",\"Location\":\"Off South Rd\",\"Town\":\"Ulster\",\"Sale_Price\":2928,\"Tax\":2682.75,\"Surplus\":245.25,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"122\",\"SBL\":\"039.012-0004-012.211-0000\",\"Location\":\"1448 Route 32\",\"Town\":\"Ulster\",\"Sale_Price\":38000,\"Tax\":7834.97,\"Surplus\":30165.03,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"123\",\"SBL\":\"047.002-0003-003.000-0000\",\"Location\":\"256 Route 28A\",\"Town\":\"Ulster\",\"Sale_Price\":184000,\"Tax\":17011.55,\"Surplus\":166988.45,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"124\",\"SBL\":\"047.026-0001-011.000-0000\",\"Location\":\"Route 28A\",\"Town\":\"Ulster\",\"Sale_Price\":1102,\"Tax\":556.83,\"Surplus\":545.17,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"125\",\"SBL\":\"047.026-0001-012.000-0000\",\"Location\":\"Route 28A\",\"Town\":\"Ulster\",\"Sale_Price\":1002,\"Tax\":556.83,\"Surplus\":445.17,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"127\",\"SBL\":\"048.008-0001-034.400-0000\",\"Location\":\"Off Frank Sottile Blvd\",\"Town\":\"Ulster\",\"Sale_Price\":48000,\"Tax\":7928.8,\"Surplus\":40071.2,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"130\",\"SBL\":\"048.052-0005-010.000-0000\",\"Location\":\"136 John St\",\"Town\":\"Ulster\",\"Sale_Price\":24000,\"Tax\":3998.19,\"Surplus\":20001.81,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"131\",\"SBL\":\"056.013-0001-014.000-0000\",\"Location\":\"106 Petticoat Ln\",\"Town\":\"Ulster\",\"Sale_Price\":138000,\"Tax\":51189.74,\"Surplus\":86810.26,\"Index\":\"2017-3146\",\"Owner\":\"\"},{\"Number\":\"133\",\"SBL\":\"056.071-0002-001.000-0000\",\"Location\":\"170 Mountain Rd\",\"Town\":\"Ulster\",\"Sale_Price\":111000,\"Tax\":15716.17,\"Surplus\":95283.83,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"143\",\"SBL\":\"076.013-0002-045.000-0000\",\"Location\":\"Grandview Ave\",\"Town\":\"Wawarsing\",\"Sale_Price\":5980,\"Tax\":2054.69,\"Surplus\":3925.31,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"144\",\"SBL\":\"076.013-0004-040.000-0000\",\"Location\":\"13 Wood St\",\"Town\":\"Wawarsing\",\"Sale_Price\":15000,\"Tax\":5013.53,\"Surplus\":9986.47,\"Index\":\"2019-3784\",\"Owner\":\"\"},{\"Number\":\"145\",\"SBL\":\"076.013-0007-021.000-0000\",\"Location\":\"Wood St\",\"Town\":\"Wawarsing\",\"Sale_Price\":13000,\"Tax\":5042.71,\"Surplus\":7957.29,\"Index\":\"2019-3784\",\"Owner\":\"\"},{\"Number\":\"146\",\"SBL\":\"081.001-0002-015.000-0000\",\"Location\":\"Milk Rd\",\"Town\":\"Wawarsing\",\"Sale_Price\":132000,\"Tax\":19168.69,\"Surplus\":112831.31,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"147\",\"SBL\":\"082.004-0003-054.000-0000\",\"Location\":\"Van Keuren Rd\",\"Town\":\"Wawarsing\",\"Sale_Price\":7000,\"Tax\":626.78,\"Surplus\":6373.22,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"150\",\"SBL\":\"083.002-0001-047.000-0000\",\"Location\":\"7261 RT 209\",\"Town\":\"Wawarsing\",\"Sale_Price\":129000,\"Tax\":28233.75,\"Surplus\":100766.25,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"151\",\"SBL\":\"083.006-0001-013.000-0000\",\"Location\":\"112 RT 55\",\"Town\":\"Wawarsing\",\"Sale_Price\":132000,\"Tax\":29426.99,\"Surplus\":102573.01,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"153\",\"SBL\":\"083.034-0001-009.000-0000\",\"Location\":\"148 Port Ben Rd\",\"Town\":\"Wawarsing\",\"Sale_Price\":151000,\"Tax\":13904.62,\"Surplus\":137095.38,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"154\",\"SBL\":\"084.006-0001-026.000-0000\",\"Location\":\"6 Leslie Ln\",\"Town\":\"Wawarsing\",\"Sale_Price\":164000,\"Tax\":16952.77,\"Surplus\":147047.23,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"139\",\"SBL\":\"091.022-0009-026.000-0000\",\"Location\":\"174 Center St\",\"Town\":\"Wawarsing\",\"Sale_Price\":140000,\"Tax\":46306.79,\"Surplus\":93693.21,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"157\",\"SBL\":\"097.002-0002-026.100-0000\",\"Location\":\"RT 209\",\"Town\":\"Wawarsing\",\"Sale_Price\":52000,\"Tax\":9291.57,\"Surplus\":42708.43,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"158\",\"SBL\":\"098.001-0002-040.000-0000\",\"Location\":\"Old Queens Hwy Now Off Of Clark Road\",\"Town\":\"Wawarsing\",\"Sale_Price\":19000,\"Tax\":5355.83,\"Surplus\":13644.17,\"Index\":\"2020-2839\",\"Owner\":\"\"},{\"Number\":\"159\",\"SBL\":\"014.000-0002-019.000-0000\",\"Location\":\"49 Vanwagner Rd\",\"Town\":\"Woodstock\",\"Sale_Price\":355000,\"Tax\":42493.59,\"Surplus\":312506.41,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"160\",\"SBL\":\"015.003-0003-019.000-0000\",\"Location\":\"Vanwagner Rd\",\"Town\":\"Woodstock\",\"Sale_Price\":60000,\"Tax\":3415.63,\"Surplus\":56584.37,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"161\",\"SBL\":\"015.003-0003-020.000-0000\",\"Location\":\"Vanwagner Rd\",\"Town\":\"Woodstock\",\"Sale_Price\":68000,\"Tax\":4321.6,\"Surplus\":63678.4,\"Index\":\"2021-3086\",\"Owner\":\"\"},{\"Number\":\"163\",\"SBL\":\"027.002-0001-023.100-0000\",\"Location\":\"Glasco Tpke\",\"Town\":\"Woodstock\",\"Sale_Price\":236000,\"Tax\":24821.7,\"Surplus\":211178.3,\"Index\":\"2021-3086\",\"Owner\":\"\"}]}",
+          "threadId": "thread_KzJvNDramGYP0Rmblc9Xfc2S"
+        }
+      }
+    ],
+    "Transform to JSON": [
+      {
+        "json": {
+          "Number": "2",
+          "SBL": "056.051-0003-006.000-0000",
+          "Location": "114 Broadway/Route 9W",
+          "Town": "Esopus",
+          "Sale_Price": 183000,
+          "Tax": 8564.49,
+          "Surplus": 174435.51,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "3",
+          "SBL": "056.060-0002-007.000-0000",
+          "Location": "Canal St",
+          "Town": "Esopus",
+          "Sale_Price": 36000,
+          "Tax": 2069.59,
+          "Surplus": 33930.41,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "4",
+          "SBL": "056.067-0005-004.000-0000",
+          "Location": "198 Broadway/Route 9W",
+          "Town": "Esopus",
+          "Sale_Price": 146000,
+          "Tax": 17124.31,
+          "Surplus": 128875.69,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "5",
+          "SBL": "063.002-0002-018.000-0000",
+          "Location": "Esopus Ave",
+          "Town": "Esopus",
+          "Sale_Price": 13000,
+          "Tax": 2187.8,
+          "Surplus": 10812.2,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "9",
+          "SBL": "071.003-0003-008.000-0000",
+          "Location": "Old Post Rd",
+          "Town": "Esopus",
+          "Sale_Price": 13008,
+          "Tax": 2262.15,
+          "Surplus": 10745.85,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "10",
+          "SBL": "071.030-0002-035.000-0000",
+          "Location": "14 Maple St",
+          "Town": "Esopus",
+          "Sale_Price": 166000,
+          "Tax": 8257.98,
+          "Surplus": 157742.02,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "13",
+          "SBL": "093.002-0001-019.000-0000",
+          "Location": "833 Albany Post Rd",
+          "Town": "Gardiner",
+          "Sale_Price": 102000,
+          "Tax": 9144.09,
+          "Surplus": 92855.91,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "16",
+          "SBL": "046.002-0001-003.000-0000",
+          "Location": "Off Baker Rd",
+          "Town": "Hurley",
+          "Sale_Price": 3000,
+          "Tax": 575.96,
+          "Surplus": 2424.04,
+          "Index": "2018-3980",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "18",
+          "SBL": "047.002-0007-031.000-0000",
+          "Location": "Off Bruecken Rd",
+          "Town": "Hurley",
+          "Sale_Price": 3000,
+          "Tax": 540.56,
+          "Surplus": 2459.44,
+          "Index": "2018-3980",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "27",
+          "SBL": "087.008-0001-005.000-0000",
+          "Location": "245 Upper North Rd",
+          "Town": "Lloyd",
+          "Sale_Price": 160000,
+          "Tax": 73029.42,
+          "Surplus": 86970.58,
+          "Index": "2017-3146",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "30",
+          "SBL": "088.013-0012-011.100-0000",
+          "Location": "40 Grand St",
+          "Town": "Lloyd",
+          "Sale_Price": 120000,
+          "Tax": 47814.64,
+          "Surplus": 72185.36,
+          "Index": "2018-3980",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "31",
+          "SBL": "088.017-0005-023.000-0000",
+          "Location": "25 Mile Hill Rd",
+          "Town": "Lloyd",
+          "Sale_Price": 181000,
+          "Tax": 84933,
+          "Surplus": 96067,
+          "Index": "2018-3980",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "32",
+          "SBL": "094.002-0004-008.000-0000",
+          "Location": "6 Joan Pl",
+          "Town": "Lloyd",
+          "Sale_Price": 112000,
+          "Tax": 17544.08,
+          "Surplus": 94455.92,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "33",
+          "SBL": "095.002-0009-006.000-0000",
+          "Location": "423 Vineyard Ave",
+          "Town": "Lloyd",
+          "Sale_Price": 10000,
+          "Tax": 9147.19,
+          "Surplus": 852.81,
+          "Index": "2019-3784",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "36",
+          "SBL": "061.004-0003-058.000-0000",
+          "Location": "Maryland Ct",
+          "Town": "Marbletown",
+          "Sale_Price": 4034,
+          "Tax": 708.74,
+          "Surplus": 3325.26,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "37",
+          "SBL": "070.003-0005-027.000-0000",
+          "Location": "Mohonk Rd",
+          "Town": "Marbletown",
+          "Sale_Price": 8055,
+          "Tax": 409.97,
+          "Surplus": 7645.03,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "38",
+          "SBL": "095.004-0001-037.000-0000",
+          "Location": "222 Milton Cross Rd",
+          "Town": "Marlborough",
+          "Sale_Price": 99000,
+          "Tax": 24309.27,
+          "Surplus": 74690.73,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "40",
+          "SBL": "102.002-0006-015.112-0000",
+          "Location": "23 Conklin Hill Rd",
+          "Town": "Marlborough",
+          "Sale_Price": 64000,
+          "Tax": 10690.74,
+          "Surplus": 53309.26,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "41",
+          "SBL": "102.002-0007-011.000-0000",
+          "Location": "13 Bill's Ln",
+          "Town": "Marlborough",
+          "Sale_Price": 46480,
+          "Tax": 36804.06,
+          "Surplus": 9675.94,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "42",
+          "SBL": "102.002-0007-016.000-0000",
+          "Location": "3 Bill's Ln",
+          "Town": "Marlborough",
+          "Sale_Price": 48485,
+          "Tax": 19185.21,
+          "Surplus": 29299.79,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "46",
+          "SBL": "108.002-0004-022.000-0000",
+          "Location": "Ridge Rd",
+          "Town": "Marlborough",
+          "Sale_Price": 21000,
+          "Tax": 16160.86,
+          "Surplus": 4839.14,
+          "Index": "2019-3784",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "47",
+          "SBL": "108.002-0008-051.000-0000",
+          "Location": "Shari Dr",
+          "Town": "Marlborough",
+          "Sale_Price": 21246,
+          "Tax": 12820.94,
+          "Surplus": 8425.06,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "50",
+          "SBL": "108.004-0007-025.310-0000",
+          "Location": "1 Rosa Dr",
+          "Town": "Marlborough",
+          "Sale_Price": 104000,
+          "Tax": 36107.61,
+          "Surplus": 67892.39,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "51",
+          "SBL": "108.004-0009-033.000-0000",
+          "Location": "312 Lattintown Rd",
+          "Town": "Marlborough",
+          "Sale_Price": 89000,
+          "Tax": 19043.19,
+          "Surplus": 69956.81,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "54",
+          "SBL": "086.016-0003-006.200-0000",
+          "Location": "S Ohioville Rd",
+          "Town": "New Paltz",
+          "Sale_Price": 3079,
+          "Tax": 753.82,
+          "Surplus": 2325.18,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "57",
+          "SBL": "036.007-0001-019.000-0000",
+          "Location": "4 Beechford Dr",
+          "Town": "Olive",
+          "Sale_Price": 144000,
+          "Tax": 5248.31,
+          "Surplus": 138751.69,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "58",
+          "SBL": "045.001-0002-034.215-0000",
+          "Location": "Meadow Ln / Burgher Rd",
+          "Town": "Olive",
+          "Sale_Price": 34000,
+          "Tax": 23255.19,
+          "Surplus": 10744.81,
+          "Index": "2015-3377",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "60",
+          "SBL": "046.005-0003-037.000-0000",
+          "Location": "29 Reservoir Rd",
+          "Town": "Olive",
+          "Sale_Price": 85000,
+          "Tax": 11570,
+          "Surplus": 73430,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "62",
+          "SBL": "094.020-0003-035.000-0000",
+          "Location": "1094 Milton Tpk",
+          "Town": "Plattekill",
+          "Sale_Price": 99000,
+          "Tax": 7198.08,
+          "Surplus": 91801.92,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "63",
+          "SBL": "095.001-0003-032.001-0000",
+          "Location": "597 RT 44 55",
+          "Town": "Plattekill",
+          "Sale_Price": 164000,
+          "Tax": 89377.55,
+          "Surplus": 74622.45,
+          "Index": "2017-3146",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "65",
+          "SBL": "101.003-0003-007.000-0000",
+          "Location": "RT 32",
+          "Town": "Plattekill",
+          "Sale_Price": 11000,
+          "Tax": 1030.07,
+          "Surplus": 9969.93,
+          "Index": "2019-3784",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "66",
+          "SBL": "101.004-0002-018.000-0000",
+          "Location": "Freetown Hwy",
+          "Town": "Plattekill",
+          "Sale_Price": 1800,
+          "Tax": 1141.57,
+          "Surplus": 658.43,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "69",
+          "SBL": "102.003-0001-009.000-0000",
+          "Location": "South St",
+          "Town": "Plattekill",
+          "Sale_Price": 29000,
+          "Tax": 7110.13,
+          "Surplus": 21889.87,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "70",
+          "SBL": "102.003-0003-017.000-0000",
+          "Location": "Lewis Ln",
+          "Town": "Plattekill",
+          "Sale_Price": 6088,
+          "Tax": 1162.07,
+          "Surplus": 4925.93,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "71",
+          "SBL": "107.008-0003-003.000-0000",
+          "Location": "124 New Unionville Rd",
+          "Town": "Plattekill",
+          "Sale_Price": 147000,
+          "Tax": 34680.43,
+          "Surplus": 112319.57,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "72",
+          "SBL": "108.003-0001-011.000-0000",
+          "Location": "Huckleberry Tpk",
+          "Town": "Plattekill",
+          "Sale_Price": 6000,
+          "Tax": 886.13,
+          "Surplus": 5113.87,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "73",
+          "SBL": "059.012-0002-004.000-0000",
+          "Location": "4 Trails End Rd",
+          "Town": "Rochester",
+          "Sale_Price": 228000,
+          "Tax": 33246.99,
+          "Surplus": 194753.01,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "74",
+          "SBL": "068.013-0003-029.000-0000",
+          "Location": "Friedlander Dr",
+          "Town": "Rochester",
+          "Sale_Price": 547,
+          "Tax": 301.75,
+          "Surplus": 245.25,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "77",
+          "SBL": "077.009-0001-024.200-0000",
+          "Location": "11 Tow Path Rd",
+          "Town": "Rochester",
+          "Sale_Price": 452000,
+          "Tax": 231127.68,
+          "Surplus": 220872.32,
+          "Index": "2014-3482",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "79",
+          "SBL": "062.020-0001-026.000-0000",
+          "Location": "Dellay Ave",
+          "Town": "Rosendale",
+          "Sale_Price": 1600,
+          "Tax": 336.4,
+          "Surplus": 1263.6,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "80",
+          "SBL": "070.001-0003-006.000-0000",
+          "Location": "Mountain Rd",
+          "Town": "Rosendale",
+          "Sale_Price": 41213,
+          "Tax": 4787.97,
+          "Surplus": 36425.03,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "84",
+          "SBL": "002.003-0002-001.000-0000",
+          "Location": "Manorville Rd",
+          "Town": "Saugerties",
+          "Sale_Price": 210000,
+          "Tax": 28697.2,
+          "Surplus": 181302.8,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "88",
+          "SBL": "009.003-0007-043.000-0000",
+          "Location": "Off Malden Tpke",
+          "Town": "Saugerties",
+          "Sale_Price": 20000,
+          "Tax": 5832.86,
+          "Surplus": 14167.14,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "89",
+          "SBL": "017.005-0001-009.000-0000",
+          "Location": "333 West Saugerties Rd",
+          "Town": "Saugerties",
+          "Sale_Price": 126000,
+          "Tax": 32762.67,
+          "Surplus": 93237.33,
+          "Index": "2019-3784",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "91",
+          "SBL": "018.077-0007-058.000-0000",
+          "Location": "5 Appletree Dr",
+          "Town": "Saugerties",
+          "Sale_Price": 185000,
+          "Tax": 65793.72,
+          "Surplus": 119206.28,
+          "Index": "2018-3980",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "95",
+          "SBL": "028.003-0008-031.000-0000",
+          "Location": "Church St Ruby",
+          "Town": "Saugerties",
+          "Sale_Price": 16000,
+          "Tax": 1395.12,
+          "Surplus": 14604.88,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "100",
+          "SBL": "029.021-0002-030.000-0000",
+          "Location": "Austin Ave",
+          "Town": "Saugerties",
+          "Sale_Price": 16000,
+          "Tax": 1357.9,
+          "Surplus": 14642.1,
+          "Index": "2019-3784",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "102",
+          "SBL": "004.014-0001-033.000-0000",
+          "Location": "Route 28",
+          "Town": "Shandaken",
+          "Sale_Price": 7500,
+          "Tax": 4403.95,
+          "Surplus": 3096.05,
+          "Index": "2019-3784",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "103",
+          "SBL": "004.045-0001-017.000-0000",
+          "Location": "Depot St",
+          "Town": "Shandaken",
+          "Sale_Price": 8000,
+          "Tax": 1974.27,
+          "Surplus": 6025.73,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "104",
+          "SBL": "005.001-0002-019.000-0000",
+          "Location": "228 Route 42",
+          "Town": "Shandaken",
+          "Sale_Price": 41000,
+          "Tax": 4899.74,
+          "Surplus": 36100.26,
+          "Index": "2019-3784",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "105",
+          "SBL": "012.007-0002-011.000-0000",
+          "Location": "8181 Route 28",
+          "Town": "Shandaken",
+          "Sale_Price": 81000,
+          "Tax": 27202.63,
+          "Surplus": 53797.37,
+          "Index": "2019-3784",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "107",
+          "SBL": "013.012-0001-048.000-0000",
+          "Location": "Garfield Rd",
+          "Town": "Shandaken",
+          "Sale_Price": 11000,
+          "Tax": 814.98,
+          "Surplus": 10185.02,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "108",
+          "SBL": "013.012-0002-024.000-0000",
+          "Location": "Route 214",
+          "Town": "Shandaken",
+          "Sale_Price": 17000,
+          "Tax": 1057.4,
+          "Surplus": 15942.6,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "109",
+          "SBL": "023.000-0002-031.000-0000",
+          "Location": "Olive Tea Rd",
+          "Town": "Shandaken",
+          "Sale_Price": 62000,
+          "Tax": 8122.11,
+          "Surplus": 53877.89,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "111",
+          "SBL": "098.018-0002-017.000-0000",
+          "Location": "3634 Route 52",
+          "Town": "Shawangunk",
+          "Sale_Price": 52000,
+          "Tax": 12855.43,
+          "Surplus": 39144.58,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "118",
+          "SBL": "039.001-0004-003.000-0000",
+          "Location": "1231 Main St",
+          "Town": "Ulster",
+          "Sale_Price": 82000,
+          "Tax": 36365.85,
+          "Surplus": 45634.15,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "119",
+          "SBL": "039.006-0003-011.000-0000",
+          "Location": "Off South Rd",
+          "Town": "Ulster",
+          "Sale_Price": 2928,
+          "Tax": 2682.75,
+          "Surplus": 245.25,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "122",
+          "SBL": "039.012-0004-012.211-0000",
+          "Location": "1448 Route 32",
+          "Town": "Ulster",
+          "Sale_Price": 38000,
+          "Tax": 7834.97,
+          "Surplus": 30165.03,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "123",
+          "SBL": "047.002-0003-003.000-0000",
+          "Location": "256 Route 28A",
+          "Town": "Ulster",
+          "Sale_Price": 184000,
+          "Tax": 17011.55,
+          "Surplus": 166988.45,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "124",
+          "SBL": "047.026-0001-011.000-0000",
+          "Location": "Route 28A",
+          "Town": "Ulster",
+          "Sale_Price": 1102,
+          "Tax": 556.83,
+          "Surplus": 545.17,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "125",
+          "SBL": "047.026-0001-012.000-0000",
+          "Location": "Route 28A",
+          "Town": "Ulster",
+          "Sale_Price": 1002,
+          "Tax": 556.83,
+          "Surplus": 445.17,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "127",
+          "SBL": "048.008-0001-034.400-0000",
+          "Location": "Off Frank Sottile Blvd",
+          "Town": "Ulster",
+          "Sale_Price": 48000,
+          "Tax": 7928.8,
+          "Surplus": 40071.2,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "130",
+          "SBL": "048.052-0005-010.000-0000",
+          "Location": "136 John St",
+          "Town": "Ulster",
+          "Sale_Price": 24000,
+          "Tax": 3998.19,
+          "Surplus": 20001.81,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "131",
+          "SBL": "056.013-0001-014.000-0000",
+          "Location": "106 Petticoat Ln",
+          "Town": "Ulster",
+          "Sale_Price": 138000,
+          "Tax": 51189.74,
+          "Surplus": 86810.26,
+          "Index": "2017-3146",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "133",
+          "SBL": "056.071-0002-001.000-0000",
+          "Location": "170 Mountain Rd",
+          "Town": "Ulster",
+          "Sale_Price": 111000,
+          "Tax": 15716.17,
+          "Surplus": 95283.83,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "143",
+          "SBL": "076.013-0002-045.000-0000",
+          "Location": "Grandview Ave",
+          "Town": "Wawarsing",
+          "Sale_Price": 5980,
+          "Tax": 2054.69,
+          "Surplus": 3925.31,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "144",
+          "SBL": "076.013-0004-040.000-0000",
+          "Location": "13 Wood St",
+          "Town": "Wawarsing",
+          "Sale_Price": 15000,
+          "Tax": 5013.53,
+          "Surplus": 9986.47,
+          "Index": "2019-3784",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "145",
+          "SBL": "076.013-0007-021.000-0000",
+          "Location": "Wood St",
+          "Town": "Wawarsing",
+          "Sale_Price": 13000,
+          "Tax": 5042.71,
+          "Surplus": 7957.29,
+          "Index": "2019-3784",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "146",
+          "SBL": "081.001-0002-015.000-0000",
+          "Location": "Milk Rd",
+          "Town": "Wawarsing",
+          "Sale_Price": 132000,
+          "Tax": 19168.69,
+          "Surplus": 112831.31,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "147",
+          "SBL": "082.004-0003-054.000-0000",
+          "Location": "Van Keuren Rd",
+          "Town": "Wawarsing",
+          "Sale_Price": 7000,
+          "Tax": 626.78,
+          "Surplus": 6373.22,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "150",
+          "SBL": "083.002-0001-047.000-0000",
+          "Location": "7261 RT 209",
+          "Town": "Wawarsing",
+          "Sale_Price": 129000,
+          "Tax": 28233.75,
+          "Surplus": 100766.25,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "151",
+          "SBL": "083.006-0001-013.000-0000",
+          "Location": "112 RT 55",
+          "Town": "Wawarsing",
+          "Sale_Price": 132000,
+          "Tax": 29426.99,
+          "Surplus": 102573.01,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "153",
+          "SBL": "083.034-0001-009.000-0000",
+          "Location": "148 Port Ben Rd",
+          "Town": "Wawarsing",
+          "Sale_Price": 151000,
+          "Tax": 13904.62,
+          "Surplus": 137095.38,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "154",
+          "SBL": "084.006-0001-026.000-0000",
+          "Location": "6 Leslie Ln",
+          "Town": "Wawarsing",
+          "Sale_Price": 164000,
+          "Tax": 16952.77,
+          "Surplus": 147047.23,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "139",
+          "SBL": "091.022-0009-026.000-0000",
+          "Location": "174 Center St",
+          "Town": "Wawarsing",
+          "Sale_Price": 140000,
+          "Tax": 46306.79,
+          "Surplus": 93693.21,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "157",
+          "SBL": "097.002-0002-026.100-0000",
+          "Location": "RT 209",
+          "Town": "Wawarsing",
+          "Sale_Price": 52000,
+          "Tax": 9291.57,
+          "Surplus": 42708.43,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "158",
+          "SBL": "098.001-0002-040.000-0000",
+          "Location": "Old Queens Hwy Now Off Of Clark Road",
+          "Town": "Wawarsing",
+          "Sale_Price": 19000,
+          "Tax": 5355.83,
+          "Surplus": 13644.17,
+          "Index": "2020-2839",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "159",
+          "SBL": "014.000-0002-019.000-0000",
+          "Location": "49 Vanwagner Rd",
+          "Town": "Woodstock",
+          "Sale_Price": 355000,
+          "Tax": 42493.59,
+          "Surplus": 312506.41,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "160",
+          "SBL": "015.003-0003-019.000-0000",
+          "Location": "Vanwagner Rd",
+          "Town": "Woodstock",
+          "Sale_Price": 60000,
+          "Tax": 3415.63,
+          "Surplus": 56584.37,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "161",
+          "SBL": "015.003-0003-020.000-0000",
+          "Location": "Vanwagner Rd",
+          "Town": "Woodstock",
+          "Sale_Price": 68000,
+          "Tax": 4321.6,
+          "Surplus": 63678.4,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      },
+      {
+        "json": {
+          "Number": "163",
+          "SBL": "027.002-0001-023.100-0000",
+          "Location": "Glasco Tpke",
+          "Town": "Woodstock",
+          "Sale_Price": 236000,
+          "Tax": 24821.7,
+          "Surplus": 211178.3,
+          "Index": "2021-3086",
+          "Owner": "",
+          "Auction": [
+            "recD5QocLHjlt5P99"
+          ]
+        }
+      }
+    ],
+    "Create Foreclosure Records": [
+      {
+        "json": {
+          "id": "reclmBSpMx1rOVJuW",
+          "createdTime": "2025-03-23T04:28:49.000Z",
+          "fields": {
+            "Foreclosures": "114-broadwayroute-9w-id-995",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 2,
+            "Location": "114 Broadway/Route 9W",
+            "City": "Esopus",
+            "SBL": "056.051-0003-006.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 183000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 995,
+            "Calc Surplus": 183000,
+            "Calc Payout": 61000,
+            "Surplus": 174435.51,
+            "Tax": 8564.49,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recuurnTeVL17SvQX",
+          "createdTime": "2025-03-23T04:28:49.000Z",
+          "fields": {
+            "Foreclosures": "canal-st-id-996",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 3,
+            "Location": "Canal St",
+            "City": "Esopus",
+            "SBL": "056.060-0002-007.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 36000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 996,
+            "Calc Surplus": 36000,
+            "Calc Payout": 12000,
+            "Surplus": 33930.41,
+            "Tax": 2069.59,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recCV9JJ1GuLqm0Hc",
+          "createdTime": "2025-03-23T04:28:49.000Z",
+          "fields": {
+            "Foreclosures": "198-broadwayroute-9w-id-997",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 4,
+            "Location": "198 Broadway/Route 9W",
+            "City": "Esopus",
+            "SBL": "056.067-0005-004.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 146000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 997,
+            "Calc Surplus": 146000,
+            "Calc Payout": 48666.666666666664,
+            "Surplus": 128875.69,
+            "Tax": 17124.31,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recYpPuqk1rpsSbaa",
+          "createdTime": "2025-03-23T04:28:49.000Z",
+          "fields": {
+            "Foreclosures": "esopus-ave-id-998",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 5,
+            "Location": "Esopus Ave",
+            "City": "Esopus",
+            "SBL": "063.002-0002-018.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 13000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 998,
+            "Calc Surplus": 13000,
+            "Calc Payout": 0,
+            "Surplus": 10812.2,
+            "Tax": 2187.8,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "rec3LRu3sllVl4BQL",
+          "createdTime": "2025-03-23T04:28:50.000Z",
+          "fields": {
+            "Foreclosures": "old-post-rd-id-999",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 9,
+            "Location": "Old Post Rd",
+            "City": "Esopus",
+            "SBL": "071.003-0003-008.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 13008,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 999,
+            "Calc Surplus": 13008,
+            "Calc Payout": 0,
+            "Surplus": 10745.85,
+            "Tax": 2262.15,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recmgThKvA7CQcIB8",
+          "createdTime": "2025-03-23T04:28:50.000Z",
+          "fields": {
+            "Foreclosures": "14-maple-st-id-1000",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 10,
+            "Location": "14 Maple St",
+            "City": "Esopus",
+            "SBL": "071.030-0002-035.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 166000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1000,
+            "Calc Surplus": 166000,
+            "Calc Payout": 55333.333333333336,
+            "Surplus": 157742.02,
+            "Tax": 8257.98,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recA2Jo09TKQhEqmu",
+          "createdTime": "2025-03-23T04:28:50.000Z",
+          "fields": {
+            "Foreclosures": "833-albany-post-rd-id-1001",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 13,
+            "Location": "833 Albany Post Rd",
+            "City": "Gardiner",
+            "SBL": "093.002-0001-019.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 102000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1001,
+            "Calc Surplus": 102000,
+            "Calc Payout": 34000,
+            "Surplus": 92855.91,
+            "Tax": 9144.09,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recQUJhye1iy0uyYq",
+          "createdTime": "2025-03-23T04:28:50.000Z",
+          "fields": {
+            "Foreclosures": "off-baker-rd-id-1002",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 16,
+            "Location": "Off Baker Rd",
+            "City": "Hurley",
+            "SBL": "046.002-0001-003.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 3000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1002,
+            "Calc Surplus": 3000,
+            "Calc Payout": 0,
+            "Surplus": 2424.04,
+            "Tax": 575.96,
+            "Index": "2018-3980"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recPQ7PAuMg2XbKgi",
+          "createdTime": "2025-03-23T04:28:51.000Z",
+          "fields": {
+            "Foreclosures": "off-bruecken-rd-id-1003",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 18,
+            "Location": "Off Bruecken Rd",
+            "City": "Hurley",
+            "SBL": "047.002-0007-031.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 3000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1003,
+            "Calc Surplus": 3000,
+            "Calc Payout": 0,
+            "Surplus": 2459.44,
+            "Tax": 540.56,
+            "Index": "2018-3980"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recEzfziDjedoaNHa",
+          "createdTime": "2025-03-23T04:28:51.000Z",
+          "fields": {
+            "Foreclosures": "245-upper-north-rd-id-1004",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 27,
+            "Location": "245 Upper North Rd",
+            "City": "Lloyd",
+            "SBL": "087.008-0001-005.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 160000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1004,
+            "Calc Surplus": 160000,
+            "Calc Payout": 53333.333333333336,
+            "Surplus": 86970.58,
+            "Tax": 73029.42,
+            "Index": "2017-3146"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "rec8w1ATSmwitMtQG",
+          "createdTime": "2025-03-23T04:28:51.000Z",
+          "fields": {
+            "Foreclosures": "40-grand-st-id-1005",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 30,
+            "Location": "40 Grand St",
+            "City": "Lloyd",
+            "SBL": "088.013-0012-011.100-0000",
+            "Est Market Value": 0,
+            "Sale Price": 120000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1005,
+            "Calc Surplus": 120000,
+            "Calc Payout": 40000,
+            "Surplus": 72185.36,
+            "Tax": 47814.64,
+            "Index": "2018-3980"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recnMKPvmtMdVg8Hr",
+          "createdTime": "2025-03-23T04:28:51.000Z",
+          "fields": {
+            "Foreclosures": "25-mile-hill-rd-id-1006",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 31,
+            "Location": "25 Mile Hill Rd",
+            "City": "Lloyd",
+            "SBL": "088.017-0005-023.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 181000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1006,
+            "Calc Surplus": 181000,
+            "Calc Payout": 60333.333333333336,
+            "Surplus": 96067,
+            "Tax": 84933,
+            "Index": "2018-3980"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recjBkhSzYQ3i3aJW",
+          "createdTime": "2025-03-23T04:28:52.000Z",
+          "fields": {
+            "Foreclosures": "6-joan-pl-id-1007",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 32,
+            "Location": "6 Joan Pl",
+            "City": "Lloyd",
+            "SBL": "094.002-0004-008.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 112000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1007,
+            "Calc Surplus": 112000,
+            "Calc Payout": 37333.333333333336,
+            "Surplus": 94455.92,
+            "Tax": 17544.08,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recMHLdwXqbzXStOR",
+          "createdTime": "2025-03-23T04:28:52.000Z",
+          "fields": {
+            "Foreclosures": "423-vineyard-ave-id-1008",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 33,
+            "Location": "423 Vineyard Ave",
+            "City": "Lloyd",
+            "SBL": "095.002-0009-006.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 10000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1008,
+            "Calc Surplus": 10000,
+            "Calc Payout": 0,
+            "Surplus": 852.81,
+            "Tax": 9147.19,
+            "Index": "2019-3784"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "rec6kwtx9IfB8NzX1",
+          "createdTime": "2025-03-23T04:28:52.000Z",
+          "fields": {
+            "Foreclosures": "maryland-ct-id-1009",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 36,
+            "Location": "Maryland Ct",
+            "City": "Marbletown",
+            "SBL": "061.004-0003-058.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 4034,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1009,
+            "Calc Surplus": 4034,
+            "Calc Payout": 0,
+            "Surplus": 3325.26,
+            "Tax": 708.74,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recdlLWOt7T2ZKYCp",
+          "createdTime": "2025-03-23T04:28:52.000Z",
+          "fields": {
+            "Foreclosures": "mohonk-rd-id-1010",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 37,
+            "Location": "Mohonk Rd",
+            "City": "Marbletown",
+            "SBL": "070.003-0005-027.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 8055,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1010,
+            "Calc Surplus": 8055,
+            "Calc Payout": 0,
+            "Surplus": 7645.03,
+            "Tax": 409.97,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "rec4766drIbelpsUl",
+          "createdTime": "2025-03-23T04:28:53.000Z",
+          "fields": {
+            "Foreclosures": "222-milton-cross-rd-id-1011",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 38,
+            "Location": "222 Milton Cross Rd",
+            "City": "Marlborough",
+            "SBL": "095.004-0001-037.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 99000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1011,
+            "Calc Surplus": 99000,
+            "Calc Payout": 33000,
+            "Surplus": 74690.73,
+            "Tax": 24309.27,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "reccvRjTMJbRhMPod",
+          "createdTime": "2025-03-23T04:28:53.000Z",
+          "fields": {
+            "Foreclosures": "23-conklin-hill-rd-id-1012",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 40,
+            "Location": "23 Conklin Hill Rd",
+            "City": "Marlborough",
+            "SBL": "102.002-0006-015.112-0000",
+            "Est Market Value": 0,
+            "Sale Price": 64000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1012,
+            "Calc Surplus": 64000,
+            "Calc Payout": 21333.333333333332,
+            "Surplus": 53309.26,
+            "Tax": 10690.74,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "reclE0I6NsafRAI2e",
+          "createdTime": "2025-03-23T04:28:53.000Z",
+          "fields": {
+            "Foreclosures": "13-bills-ln-id-1013",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 41,
+            "Location": "13 Bill's Ln",
+            "City": "Marlborough",
+            "SBL": "102.002-0007-011.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 46480,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1013,
+            "Calc Surplus": 46480,
+            "Calc Payout": 15493.333333333334,
+            "Surplus": 9675.94,
+            "Tax": 36804.06,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recRbPQz0BZ2CmPw8",
+          "createdTime": "2025-03-23T04:28:53.000Z",
+          "fields": {
+            "Foreclosures": "3-bills-ln-id-1014",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 42,
+            "Location": "3 Bill's Ln",
+            "City": "Marlborough",
+            "SBL": "102.002-0007-016.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 48485,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1014,
+            "Calc Surplus": 48485,
+            "Calc Payout": 16161.666666666666,
+            "Surplus": 29299.79,
+            "Tax": 19185.21,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recLlAmpu0iiBzZdB",
+          "createdTime": "2025-03-23T04:28:54.000Z",
+          "fields": {
+            "Foreclosures": "ridge-rd-id-1015",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 46,
+            "Location": "Ridge Rd",
+            "City": "Marlborough",
+            "SBL": "108.002-0004-022.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 21000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1015,
+            "Calc Surplus": 21000,
+            "Calc Payout": 7000,
+            "Surplus": 4839.14,
+            "Tax": 16160.86,
+            "Index": "2019-3784"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "reciW1s5bLRRvfex7",
+          "createdTime": "2025-03-23T04:28:54.000Z",
+          "fields": {
+            "Foreclosures": "shari-dr-id-1016",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 47,
+            "Location": "Shari Dr",
+            "City": "Marlborough",
+            "SBL": "108.002-0008-051.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 21246,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1016,
+            "Calc Surplus": 21246,
+            "Calc Payout": 7082,
+            "Surplus": 8425.06,
+            "Tax": 12820.94,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recK2bqxHdq7Bct77",
+          "createdTime": "2025-03-23T04:28:54.000Z",
+          "fields": {
+            "Foreclosures": "1-rosa-dr-id-1017",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 50,
+            "Location": "1 Rosa Dr",
+            "City": "Marlborough",
+            "SBL": "108.004-0007-025.310-0000",
+            "Est Market Value": 0,
+            "Sale Price": 104000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1017,
+            "Calc Surplus": 104000,
+            "Calc Payout": 34666.666666666664,
+            "Surplus": 67892.39,
+            "Tax": 36107.61,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recPanSKrayN2AeVW",
+          "createdTime": "2025-03-23T04:28:54.000Z",
+          "fields": {
+            "Foreclosures": "312-lattintown-rd-id-1018",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 51,
+            "Location": "312 Lattintown Rd",
+            "City": "Marlborough",
+            "SBL": "108.004-0009-033.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 89000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1018,
+            "Calc Surplus": 89000,
+            "Calc Payout": 29666.666666666668,
+            "Surplus": 69956.81,
+            "Tax": 19043.19,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recgwgY0KhP4CPjqF",
+          "createdTime": "2025-03-23T04:28:54.000Z",
+          "fields": {
+            "Foreclosures": "s-ohioville-rd-id-1019",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 54,
+            "Location": "S Ohioville Rd",
+            "City": "New Paltz",
+            "SBL": "086.016-0003-006.200-0000",
+            "Est Market Value": 0,
+            "Sale Price": 3079,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1019,
+            "Calc Surplus": 3079,
+            "Calc Payout": 0,
+            "Surplus": 2325.18,
+            "Tax": 753.82,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recR4vHfK8vhT7Vr4",
+          "createdTime": "2025-03-23T04:28:55.000Z",
+          "fields": {
+            "Foreclosures": "4-beechford-dr-id-1020",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 57,
+            "Location": "4 Beechford Dr",
+            "City": "Olive",
+            "SBL": "036.007-0001-019.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 144000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1020,
+            "Calc Surplus": 144000,
+            "Calc Payout": 48000,
+            "Surplus": 138751.69,
+            "Tax": 5248.31,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "rec0rGsqok7i2ows3",
+          "createdTime": "2025-03-23T04:28:55.000Z",
+          "fields": {
+            "Foreclosures": "meadow-ln--burgher-rd-id-1021",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 58,
+            "Location": "Meadow Ln / Burgher Rd",
+            "City": "Olive",
+            "SBL": "045.001-0002-034.215-0000",
+            "Est Market Value": 0,
+            "Sale Price": 34000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1021,
+            "Calc Surplus": 34000,
+            "Calc Payout": 11333.333333333334,
+            "Surplus": 10744.81,
+            "Tax": 23255.19,
+            "Index": "2015-3377"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "rec7Uy0XwXQjQPPhO",
+          "createdTime": "2025-03-23T04:28:55.000Z",
+          "fields": {
+            "Foreclosures": "29-reservoir-rd-id-1022",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 60,
+            "Location": "29 Reservoir Rd",
+            "City": "Olive",
+            "SBL": "046.005-0003-037.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 85000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1022,
+            "Calc Surplus": 85000,
+            "Calc Payout": 28333.333333333332,
+            "Surplus": 73430,
+            "Tax": 11570,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "rectqqKFY6WpJdfOQ",
+          "createdTime": "2025-03-23T04:28:55.000Z",
+          "fields": {
+            "Foreclosures": "1094-milton-tpk-id-1023",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 62,
+            "Location": "1094 Milton Tpk",
+            "City": "Plattekill",
+            "SBL": "094.020-0003-035.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 99000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1023,
+            "Calc Surplus": 99000,
+            "Calc Payout": 33000,
+            "Surplus": 91801.92,
+            "Tax": 7198.08,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recd7zZHnqMiKd8Dc",
+          "createdTime": "2025-03-23T04:28:56.000Z",
+          "fields": {
+            "Foreclosures": "597-rt-44-55-id-1024",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 63,
+            "Location": "597 RT 44 55",
+            "City": "Plattekill",
+            "SBL": "095.001-0003-032.001-0000",
+            "Est Market Value": 0,
+            "Sale Price": 164000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1024,
+            "Calc Surplus": 164000,
+            "Calc Payout": 54666.666666666664,
+            "Surplus": 74622.45,
+            "Tax": 89377.55,
+            "Index": "2017-3146"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recrgDfXAOkwlIt3c",
+          "createdTime": "2025-03-23T04:28:56.000Z",
+          "fields": {
+            "Foreclosures": "rt-32-id-1025",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 65,
+            "Location": "RT 32",
+            "City": "Plattekill",
+            "SBL": "101.003-0003-007.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 11000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1025,
+            "Calc Surplus": 11000,
+            "Calc Payout": 0,
+            "Surplus": 9969.93,
+            "Tax": 1030.07,
+            "Index": "2019-3784"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "reciemKnI0mIYkBWq",
+          "createdTime": "2025-03-23T04:28:56.000Z",
+          "fields": {
+            "Foreclosures": "freetown-hwy-id-1026",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 66,
+            "Location": "Freetown Hwy",
+            "City": "Plattekill",
+            "SBL": "101.004-0002-018.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 1800,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1026,
+            "Calc Surplus": 1800,
+            "Calc Payout": 0,
+            "Surplus": 658.43,
+            "Tax": 1141.57,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recengE2IubmPP6D6",
+          "createdTime": "2025-03-23T04:28:56.000Z",
+          "fields": {
+            "Foreclosures": "south-st-id-1027",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 69,
+            "Location": "South St",
+            "City": "Plattekill",
+            "SBL": "102.003-0001-009.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 29000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1027,
+            "Calc Surplus": 29000,
+            "Calc Payout": 9666.666666666666,
+            "Surplus": 21889.87,
+            "Tax": 7110.13,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recBA0ZoIs3YclYTF",
+          "createdTime": "2025-03-23T04:28:57.000Z",
+          "fields": {
+            "Foreclosures": "lewis-ln-id-1028",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 70,
+            "Location": "Lewis Ln",
+            "City": "Plattekill",
+            "SBL": "102.003-0003-017.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 6088,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1028,
+            "Calc Surplus": 6088,
+            "Calc Payout": 0,
+            "Surplus": 4925.93,
+            "Tax": 1162.07,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recpDYEyABII64Kvt",
+          "createdTime": "2025-03-23T04:28:57.000Z",
+          "fields": {
+            "Foreclosures": "124-new-unionville-rd-id-1029",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 71,
+            "Location": "124 New Unionville Rd",
+            "City": "Plattekill",
+            "SBL": "107.008-0003-003.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 147000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1029,
+            "Calc Surplus": 147000,
+            "Calc Payout": 49000,
+            "Surplus": 112319.57,
+            "Tax": 34680.43,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recllsaUUHIvmqow0",
+          "createdTime": "2025-03-23T04:28:57.000Z",
+          "fields": {
+            "Foreclosures": "huckleberry-tpk-id-1030",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 72,
+            "Location": "Huckleberry Tpk",
+            "City": "Plattekill",
+            "SBL": "108.003-0001-011.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 6000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1030,
+            "Calc Surplus": 6000,
+            "Calc Payout": 0,
+            "Surplus": 5113.87,
+            "Tax": 886.13,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recUAuJP0ZX8KBEck",
+          "createdTime": "2025-03-23T04:28:57.000Z",
+          "fields": {
+            "Foreclosures": "4-trails-end-rd-id-1031",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 73,
+            "Location": "4 Trails End Rd",
+            "City": "Rochester",
+            "SBL": "059.012-0002-004.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 228000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1031,
+            "Calc Surplus": 228000,
+            "Calc Payout": 76000,
+            "Surplus": 194753.01,
+            "Tax": 33246.99,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recHhfH8v3KErQTzv",
+          "createdTime": "2025-03-23T04:28:58.000Z",
+          "fields": {
+            "Foreclosures": "friedlander-dr-id-1032",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 74,
+            "Location": "Friedlander Dr",
+            "City": "Rochester",
+            "SBL": "068.013-0003-029.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 547,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1032,
+            "Calc Surplus": 547,
+            "Calc Payout": 0,
+            "Surplus": 245.25,
+            "Tax": 301.75,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recMzuw8hm5s24iKd",
+          "createdTime": "2025-03-23T04:28:58.000Z",
+          "fields": {
+            "Foreclosures": "11-tow-path-rd-id-1033",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 77,
+            "Location": "11 Tow Path Rd",
+            "City": "Rochester",
+            "SBL": "077.009-0001-024.200-0000",
+            "Est Market Value": 0,
+            "Sale Price": 452000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1033,
+            "Calc Surplus": 452000,
+            "Calc Payout": 150666.66666666666,
+            "Surplus": 220872.32,
+            "Tax": 231127.68,
+            "Index": "2014-3482"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recNQ7wDWHRaozQLf",
+          "createdTime": "2025-03-23T04:28:58.000Z",
+          "fields": {
+            "Foreclosures": "dellay-ave-id-1034",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 79,
+            "Location": "Dellay Ave",
+            "City": "Rosendale",
+            "SBL": "062.020-0001-026.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 1600,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1034,
+            "Calc Surplus": 1600,
+            "Calc Payout": 0,
+            "Surplus": 1263.6,
+            "Tax": 336.4,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recZ9zFY0tdvlO4aP",
+          "createdTime": "2025-03-23T04:28:58.000Z",
+          "fields": {
+            "Foreclosures": "mountain-rd-id-1035",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 80,
+            "Location": "Mountain Rd",
+            "City": "Rosendale",
+            "SBL": "070.001-0003-006.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 41213,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1035,
+            "Calc Surplus": 41213,
+            "Calc Payout": 13737.666666666666,
+            "Surplus": 36425.03,
+            "Tax": 4787.97,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recT4UJfoegxNUJ2z",
+          "createdTime": "2025-03-23T04:28:58.000Z",
+          "fields": {
+            "Foreclosures": "manorville-rd-id-1036",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 84,
+            "Location": "Manorville Rd",
+            "City": "Saugerties",
+            "SBL": "002.003-0002-001.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 210000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1036,
+            "Calc Surplus": 210000,
+            "Calc Payout": 70000,
+            "Surplus": 181302.8,
+            "Tax": 28697.2,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recd0gZOjwuLaO3cA",
+          "createdTime": "2025-03-23T04:28:59.000Z",
+          "fields": {
+            "Foreclosures": "off-malden-tpke-id-1037",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 88,
+            "Location": "Off Malden Tpke",
+            "City": "Saugerties",
+            "SBL": "009.003-0007-043.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 20000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1037,
+            "Calc Surplus": 20000,
+            "Calc Payout": 6666.666666666667,
+            "Surplus": 14167.14,
+            "Tax": 5832.86,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recgYynFi9vHMriJ2",
+          "createdTime": "2025-03-23T04:28:59.000Z",
+          "fields": {
+            "Foreclosures": "333-west-saugerties-rd-id-1038",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 89,
+            "Location": "333 West Saugerties Rd",
+            "City": "Saugerties",
+            "SBL": "017.005-0001-009.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 126000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1038,
+            "Calc Surplus": 126000,
+            "Calc Payout": 42000,
+            "Surplus": 93237.33,
+            "Tax": 32762.67,
+            "Index": "2019-3784"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recvkdbf0Zyx05On5",
+          "createdTime": "2025-03-23T04:28:59.000Z",
+          "fields": {
+            "Foreclosures": "5-appletree-dr-id-1039",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 91,
+            "Location": "5 Appletree Dr",
+            "City": "Saugerties",
+            "SBL": "018.077-0007-058.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 185000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1039,
+            "Calc Surplus": 185000,
+            "Calc Payout": 61666.666666666664,
+            "Surplus": 119206.28,
+            "Tax": 65793.72,
+            "Index": "2018-3980"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recDGNMEDCo0T0amD",
+          "createdTime": "2025-03-23T04:28:59.000Z",
+          "fields": {
+            "Foreclosures": "church-st-ruby-id-1040",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 95,
+            "Location": "Church St Ruby",
+            "City": "Saugerties",
+            "SBL": "028.003-0008-031.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 16000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1040,
+            "Calc Surplus": 16000,
+            "Calc Payout": 5333.333333333333,
+            "Surplus": 14604.88,
+            "Tax": 1395.12,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recdg4lGWBxt2NDX7",
+          "createdTime": "2025-03-23T04:28:59.000Z",
+          "fields": {
+            "Foreclosures": "austin-ave-id-1041",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 100,
+            "Location": "Austin Ave",
+            "City": "Saugerties",
+            "SBL": "029.021-0002-030.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 16000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1041,
+            "Calc Surplus": 16000,
+            "Calc Payout": 5333.333333333333,
+            "Surplus": 14642.1,
+            "Tax": 1357.9,
+            "Index": "2019-3784"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "rec9Q7Fw96zT6oPcE",
+          "createdTime": "2025-03-23T04:29:00.000Z",
+          "fields": {
+            "Foreclosures": "route-28-id-1042",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 102,
+            "Location": "Route 28",
+            "City": "Shandaken",
+            "SBL": "004.014-0001-033.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 7500,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1042,
+            "Calc Surplus": 7500,
+            "Calc Payout": 0,
+            "Surplus": 3096.05,
+            "Tax": 4403.95,
+            "Index": "2019-3784"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recOOuyCgTZHXYdub",
+          "createdTime": "2025-03-23T04:29:00.000Z",
+          "fields": {
+            "Foreclosures": "depot-st-id-1043",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 103,
+            "Location": "Depot St",
+            "City": "Shandaken",
+            "SBL": "004.045-0001-017.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 8000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1043,
+            "Calc Surplus": 8000,
+            "Calc Payout": 0,
+            "Surplus": 6025.73,
+            "Tax": 1974.27,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "rec9E0HcCtgK6eVvn",
+          "createdTime": "2025-03-23T04:29:00.000Z",
+          "fields": {
+            "Foreclosures": "228-route-42-id-1044",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 104,
+            "Location": "228 Route 42",
+            "City": "Shandaken",
+            "SBL": "005.001-0002-019.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 41000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1044,
+            "Calc Surplus": 41000,
+            "Calc Payout": 13666.666666666666,
+            "Surplus": 36100.26,
+            "Tax": 4899.74,
+            "Index": "2019-3784"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recqjVQyIXfEt2CSZ",
+          "createdTime": "2025-03-23T04:29:00.000Z",
+          "fields": {
+            "Foreclosures": "8181-route-28-id-1045",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 105,
+            "Location": "8181 Route 28",
+            "City": "Shandaken",
+            "SBL": "012.007-0002-011.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 81000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1045,
+            "Calc Surplus": 81000,
+            "Calc Payout": 27000,
+            "Surplus": 53797.37,
+            "Tax": 27202.63,
+            "Index": "2019-3784"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recU0O95ViPRyah90",
+          "createdTime": "2025-03-23T04:29:01.000Z",
+          "fields": {
+            "Foreclosures": "garfield-rd-id-1046",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 107,
+            "Location": "Garfield Rd",
+            "City": "Shandaken",
+            "SBL": "013.012-0001-048.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 11000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1046,
+            "Calc Surplus": 11000,
+            "Calc Payout": 0,
+            "Surplus": 10185.02,
+            "Tax": 814.98,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recJrx9iTt0T7dwv8",
+          "createdTime": "2025-03-23T04:29:01.000Z",
+          "fields": {
+            "Foreclosures": "route-214-id-1047",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 108,
+            "Location": "Route 214",
+            "City": "Shandaken",
+            "SBL": "013.012-0002-024.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 17000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1047,
+            "Calc Surplus": 17000,
+            "Calc Payout": 5666.666666666667,
+            "Surplus": 15942.6,
+            "Tax": 1057.4,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recvIym0gt6lmBLaK",
+          "createdTime": "2025-03-23T04:29:01.000Z",
+          "fields": {
+            "Foreclosures": "olive-tea-rd-id-1048",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 109,
+            "Location": "Olive Tea Rd",
+            "City": "Shandaken",
+            "SBL": "023.000-0002-031.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 62000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1048,
+            "Calc Surplus": 62000,
+            "Calc Payout": 20666.666666666668,
+            "Surplus": 53877.89,
+            "Tax": 8122.11,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recvnfSveLhe5oISJ",
+          "createdTime": "2025-03-23T04:29:01.000Z",
+          "fields": {
+            "Foreclosures": "3634-route-52-id-1049",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 111,
+            "Location": "3634 Route 52",
+            "City": "Shawangunk",
+            "SBL": "098.018-0002-017.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 52000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1049,
+            "Calc Surplus": 52000,
+            "Calc Payout": 17333.333333333332,
+            "Surplus": 39144.58,
+            "Tax": 12855.43,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recSLcjy0aAqCiNv0",
+          "createdTime": "2025-03-23T04:29:02.000Z",
+          "fields": {
+            "Foreclosures": "1231-main-st-id-1050",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 118,
+            "Location": "1231 Main St",
+            "City": "Ulster",
+            "SBL": "039.001-0004-003.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 82000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1050,
+            "Calc Surplus": 82000,
+            "Calc Payout": 27333.333333333332,
+            "Surplus": 45634.15,
+            "Tax": 36365.85,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "rec2toMVkBd6l9319",
+          "createdTime": "2025-03-23T04:29:02.000Z",
+          "fields": {
+            "Foreclosures": "off-south-rd-id-1051",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 119,
+            "Location": "Off South Rd",
+            "City": "Ulster",
+            "SBL": "039.006-0003-011.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 2928,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1051,
+            "Calc Surplus": 2928,
+            "Calc Payout": 0,
+            "Surplus": 245.25,
+            "Tax": 2682.75,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "rec2iNPMlbkUogJAV",
+          "createdTime": "2025-03-23T04:29:02.000Z",
+          "fields": {
+            "Foreclosures": "1448-route-32-id-1052",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 122,
+            "Location": "1448 Route 32",
+            "City": "Ulster",
+            "SBL": "039.012-0004-012.211-0000",
+            "Est Market Value": 0,
+            "Sale Price": 38000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1052,
+            "Calc Surplus": 38000,
+            "Calc Payout": 12666.666666666666,
+            "Surplus": 30165.03,
+            "Tax": 7834.97,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recIWagWmhdtexfFN",
+          "createdTime": "2025-03-23T04:29:02.000Z",
+          "fields": {
+            "Foreclosures": "256-route-28a-id-1053",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 123,
+            "Location": "256 Route 28A",
+            "City": "Ulster",
+            "SBL": "047.002-0003-003.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 184000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1053,
+            "Calc Surplus": 184000,
+            "Calc Payout": 61333.333333333336,
+            "Surplus": 166988.45,
+            "Tax": 17011.55,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recXCrCyKyE44mSg8",
+          "createdTime": "2025-03-23T04:29:02.000Z",
+          "fields": {
+            "Foreclosures": "route-28a-id-1054",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 124,
+            "Location": "Route 28A",
+            "City": "Ulster",
+            "SBL": "047.026-0001-011.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 1102,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1054,
+            "Calc Surplus": 1102,
+            "Calc Payout": 0,
+            "Surplus": 545.17,
+            "Tax": 556.83,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recj7DXP43wbOMja6",
+          "createdTime": "2025-03-23T04:29:03.000Z",
+          "fields": {
+            "Foreclosures": "route-28a-id-1055",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 125,
+            "Location": "Route 28A",
+            "City": "Ulster",
+            "SBL": "047.026-0001-012.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 1002,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1055,
+            "Calc Surplus": 1002,
+            "Calc Payout": 0,
+            "Surplus": 445.17,
+            "Tax": 556.83,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "rec1IYErkoib0E1pH",
+          "createdTime": "2025-03-23T04:29:03.000Z",
+          "fields": {
+            "Foreclosures": "off-frank-sottile-blvd-id-1056",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 127,
+            "Location": "Off Frank Sottile Blvd",
+            "City": "Ulster",
+            "SBL": "048.008-0001-034.400-0000",
+            "Est Market Value": 0,
+            "Sale Price": 48000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1056,
+            "Calc Surplus": 48000,
+            "Calc Payout": 16000,
+            "Surplus": 40071.2,
+            "Tax": 7928.8,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "rec8EiyHXeYjlXWxb",
+          "createdTime": "2025-03-23T04:29:03.000Z",
+          "fields": {
+            "Foreclosures": "136-john-st-id-1057",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 130,
+            "Location": "136 John St",
+            "City": "Ulster",
+            "SBL": "048.052-0005-010.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 24000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1057,
+            "Calc Surplus": 24000,
+            "Calc Payout": 8000,
+            "Surplus": 20001.81,
+            "Tax": 3998.19,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recR1BgZOiwJyjJXl",
+          "createdTime": "2025-03-23T04:29:03.000Z",
+          "fields": {
+            "Foreclosures": "106-petticoat-ln-id-1058",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 131,
+            "Location": "106 Petticoat Ln",
+            "City": "Ulster",
+            "SBL": "056.013-0001-014.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 138000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1058,
+            "Calc Surplus": 138000,
+            "Calc Payout": 46000,
+            "Surplus": 86810.26,
+            "Tax": 51189.74,
+            "Index": "2017-3146"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recCZkDTmzHs73E71",
+          "createdTime": "2025-03-23T04:29:03.000Z",
+          "fields": {
+            "Foreclosures": "170-mountain-rd-id-1059",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 133,
+            "Location": "170 Mountain Rd",
+            "City": "Ulster",
+            "SBL": "056.071-0002-001.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 111000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1059,
+            "Calc Surplus": 111000,
+            "Calc Payout": 37000,
+            "Surplus": 95283.83,
+            "Tax": 15716.17,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recsDHlg3VWCNu2AC",
+          "createdTime": "2025-03-23T04:29:04.000Z",
+          "fields": {
+            "Foreclosures": "grandview-ave-id-1060",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 143,
+            "Location": "Grandview Ave",
+            "City": "Wawarsing",
+            "SBL": "076.013-0002-045.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 5980,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1060,
+            "Calc Surplus": 5980,
+            "Calc Payout": 0,
+            "Surplus": 3925.31,
+            "Tax": 2054.69,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recWzDU7beYsYH8py",
+          "createdTime": "2025-03-23T04:29:04.000Z",
+          "fields": {
+            "Foreclosures": "13-wood-st-id-1061",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 144,
+            "Location": "13 Wood St",
+            "City": "Wawarsing",
+            "SBL": "076.013-0004-040.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 15000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1061,
+            "Calc Surplus": 15000,
+            "Calc Payout": 0,
+            "Surplus": 9986.47,
+            "Tax": 5013.53,
+            "Index": "2019-3784"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recup2mDXZ94D3QZQ",
+          "createdTime": "2025-03-23T04:29:04.000Z",
+          "fields": {
+            "Foreclosures": "wood-st-id-1062",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 145,
+            "Location": "Wood St",
+            "City": "Wawarsing",
+            "SBL": "076.013-0007-021.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 13000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1062,
+            "Calc Surplus": 13000,
+            "Calc Payout": 0,
+            "Surplus": 7957.29,
+            "Tax": 5042.71,
+            "Index": "2019-3784"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recP322tPN3ZtZikp",
+          "createdTime": "2025-03-23T04:29:04.000Z",
+          "fields": {
+            "Foreclosures": "milk-rd-id-1063",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 146,
+            "Location": "Milk Rd",
+            "City": "Wawarsing",
+            "SBL": "081.001-0002-015.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 132000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1063,
+            "Calc Surplus": 132000,
+            "Calc Payout": 44000,
+            "Surplus": 112831.31,
+            "Tax": 19168.69,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "rec3GzatrHSPkyNWP",
+          "createdTime": "2025-03-23T04:29:05.000Z",
+          "fields": {
+            "Foreclosures": "van-keuren-rd-id-1064",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 147,
+            "Location": "Van Keuren Rd",
+            "City": "Wawarsing",
+            "SBL": "082.004-0003-054.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 7000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 0,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1064,
+            "Calc Surplus": 7000,
+            "Calc Payout": 0,
+            "Surplus": 6373.22,
+            "Tax": 626.78,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recnQIyWOwezyFNsG",
+          "createdTime": "2025-03-23T04:29:05.000Z",
+          "fields": {
+            "Foreclosures": "7261-rt-209-id-1065",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 150,
+            "Location": "7261 RT 209",
+            "City": "Wawarsing",
+            "SBL": "083.002-0001-047.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 129000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1065,
+            "Calc Surplus": 129000,
+            "Calc Payout": 43000,
+            "Surplus": 100766.25,
+            "Tax": 28233.75,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recnsUdV3YLzebceR",
+          "createdTime": "2025-03-23T04:29:05.000Z",
+          "fields": {
+            "Foreclosures": "112-rt-55-id-1066",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 151,
+            "Location": "112 RT 55",
+            "City": "Wawarsing",
+            "SBL": "083.006-0001-013.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 132000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1066,
+            "Calc Surplus": 132000,
+            "Calc Payout": 44000,
+            "Surplus": 102573.01,
+            "Tax": 29426.99,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recS9FMccSeD174d3",
+          "createdTime": "2025-03-23T04:29:05.000Z",
+          "fields": {
+            "Foreclosures": "148-port-ben-rd-id-1067",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 153,
+            "Location": "148 Port Ben Rd",
+            "City": "Wawarsing",
+            "SBL": "083.034-0001-009.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 151000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1067,
+            "Calc Surplus": 151000,
+            "Calc Payout": 50333.333333333336,
+            "Surplus": 137095.38,
+            "Tax": 13904.62,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recQQcTDM0F9ZVM7n",
+          "createdTime": "2025-03-23T04:29:05.000Z",
+          "fields": {
+            "Foreclosures": "6-leslie-ln-id-1068",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 154,
+            "Location": "6 Leslie Ln",
+            "City": "Wawarsing",
+            "SBL": "084.006-0001-026.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 164000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1068,
+            "Calc Surplus": 164000,
+            "Calc Payout": 54666.666666666664,
+            "Surplus": 147047.23,
+            "Tax": 16952.77,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recgNNG3Ijq3cwiS2",
+          "createdTime": "2025-03-23T04:29:06.000Z",
+          "fields": {
+            "Foreclosures": "174-center-st-id-1069",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 139,
+            "Location": "174 Center St",
+            "City": "Wawarsing",
+            "SBL": "091.022-0009-026.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 140000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1069,
+            "Calc Surplus": 140000,
+            "Calc Payout": 46666.666666666664,
+            "Surplus": 93693.21,
+            "Tax": 46306.79,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recp0A1VzyvbI4sU1",
+          "createdTime": "2025-03-23T04:29:06.000Z",
+          "fields": {
+            "Foreclosures": "rt-209-id-1070",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 157,
+            "Location": "RT 209",
+            "City": "Wawarsing",
+            "SBL": "097.002-0002-026.100-0000",
+            "Est Market Value": 0,
+            "Sale Price": 52000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1070,
+            "Calc Surplus": 52000,
+            "Calc Payout": 17333.333333333332,
+            "Surplus": 42708.43,
+            "Tax": 9291.57,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recFV4j5IvoH37f9J",
+          "createdTime": "2025-03-23T04:29:06.000Z",
+          "fields": {
+            "Foreclosures": "old-queens-hwy-now-off-of-clark-road-id-1071",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 158,
+            "Location": "Old Queens Hwy Now Off Of Clark Road",
+            "City": "Wawarsing",
+            "SBL": "098.001-0002-040.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 19000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1071,
+            "Calc Surplus": 19000,
+            "Calc Payout": 6333.333333333333,
+            "Surplus": 13644.17,
+            "Tax": 5355.83,
+            "Index": "2020-2839"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recuoHxgVk6E5r8Dl",
+          "createdTime": "2025-03-23T04:29:06.000Z",
+          "fields": {
+            "Foreclosures": "49-vanwagner-rd-id-1072",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 159,
+            "Location": "49 Vanwagner Rd",
+            "City": "Woodstock",
+            "SBL": "014.000-0002-019.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 355000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1072,
+            "Calc Surplus": 355000,
+            "Calc Payout": 118333.33333333333,
+            "Surplus": 312506.41,
+            "Tax": 42493.59,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recg8GSQtTbANRY3c",
+          "createdTime": "2025-03-23T04:29:07.000Z",
+          "fields": {
+            "Foreclosures": "vanwagner-rd-id-1073",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 160,
+            "Location": "Vanwagner Rd",
+            "City": "Woodstock",
+            "SBL": "015.003-0003-019.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 60000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1073,
+            "Calc Surplus": 60000,
+            "Calc Payout": 20000,
+            "Surplus": 56584.37,
+            "Tax": 3415.63,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recT3Deloxq8797Px",
+          "createdTime": "2025-03-23T04:29:07.000Z",
+          "fields": {
+            "Foreclosures": "vanwagner-rd-id-1074",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 161,
+            "Location": "Vanwagner Rd",
+            "City": "Woodstock",
+            "SBL": "015.003-0003-020.000-0000",
+            "Est Market Value": 0,
+            "Sale Price": 68000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1074,
+            "Calc Surplus": 68000,
+            "Calc Payout": 22666.666666666668,
+            "Surplus": 63678.4,
+            "Tax": 4321.6,
+            "Index": "2021-3086"
+          }
+        }
+      },
+      {
+        "json": {
+          "id": "recluGqcrX9XY6Gnq",
+          "createdTime": "2025-03-23T04:29:07.000Z",
+          "fields": {
+            "Foreclosures": "glasco-tpke-id-1075",
+            "Auction": [
+              "recD5QocLHjlt5P99"
+            ],
+            "Number": 163,
+            "Location": "Glasco Tpke",
+            "City": "Woodstock",
+            "SBL": "027.002-0001-023.100-0000",
+            "Est Market Value": 0,
+            "Sale Price": 236000,
+            "Previous Sale Price": 0,
+            "Calc Taxes": 0,
+            "Est Surplus": 0,
+            "Calc Investable": 1,
+            "Est Payout": 0,
+            "Est Investable": 0,
+            "ID": 1075,
+            "Calc Surplus": 236000,
+            "Calc Payout": 78666.66666666667,
+            "Surplus": 211178.3,
+            "Tax": 24821.7,
+            "Index": "2021-3086"
+          }
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Auctions with Surplus List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Auctions with Surplus List": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Foreclosure Records": {
+      "main": [
+        [
+          {
+            "node": "Consolidate to Auctions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Auction": {
+      "main": [
+        [
+          {
+            "node": "Workflow Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Transform to JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform to JSON": {
+      "main": [
+        [
+          {
+            "node": "Create Foreclosure Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consolidate to Auctions": {
+      "main": [
+        [
+          {
+            "node": "Update Auction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "c0ac3b6d-ad8d-471a-8b7a-952588c17787",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "4dba8cd386ae3944b2fc7eaa8a1fd4bf66504415151768c62f3b476b5123f76d"
+  },
+  "id": "TYI9aehJQl3PGEcH",
+  "tags": []
 }
