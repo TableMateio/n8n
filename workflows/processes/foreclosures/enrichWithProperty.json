@@ -23,7 +23,7 @@
 						},
 						{
 							"name": "batchSize",
-							"value": 5
+							"value": 10
 						}
 					]
 				},
@@ -53,7 +53,7 @@
 					"cachedResultName": "Foreclosures",
 					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblhq8mn3e6u4Ta39"
 				},
-				"filterByFormula": "AND({County} = \"Ulster\", {Number} != \"\", {Owner} = \"\", {SBL} != \"\")",
+				"filterByFormula": "AND({Auction} = \"17-ulster-ny\", {SBL} != \"\", {Property} = \"\")",
 				"limit": "={{ $node[\"Configuration\"].json.batchSize }}"
 			},
 			"name": "Get Foreclosures Needing Property Info",
@@ -67,7 +67,7 @@
 				}
 			},
 			"id": "2e5c0b3d-a1b1-4d3b-8fda-b6a6e2c4b0a7",
-			"notes": "Retrieves foreclosure records from Airtable that need property information enrichment. Filters to only include Ulster County records with SBL numbers but without Owner data."
+			"notes": "Retrieves foreclosure records from Airtable that need property information. Uses the filter to find records from the specific auction that have an SBL but no Property data."
 		},
 		{
 			"parameters": {
@@ -89,28 +89,51 @@
 		},
 		{
 			"parameters": {
-				"batchSize": 1,
-				"options": {
-					"reset": false
-				}
+				"value": "={{ $node[\"Initialize Browser\"].json }}",
+				"jsCode": "// Initialize counters and containers\nreturn {\n  browser: $input.item,\n  records: $node[\"Get Foreclosures Needing Property Info\"].json,\n  processedCount: 0,\n  totalCount: $node[\"Get Foreclosures Needing Property Info\"].json.length,\n  results: []\n};"
 			},
-			"name": "Process Each Foreclosure",
-			"type": "n8n-nodes-base.splitInBatches",
-			"typeVersion": 2,
-			"position": [1120, 300],
-			"id": "c9fb5c59-8d7e-4c9a-9bdc-cd96bf03b5bf",
-			"notes": "Processes foreclosure records one at a time to avoid overloading the property database."
+			"name": "Prepare Processing Context",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 1,
+			"position": [1100, 300],
+			"id": "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p",
+			"notes": "Combines the browser instance with the records to be processed into a single context object that will be used throughout the workflow."
+		},
+		{
+			"parameters": {
+				"mode": "mergeByPosition",
+				"value1": "={{ $json.processedCount < $json.totalCount }}",
+				"value2": true
+			},
+			"name": "More Records to Process?",
+			"type": "n8n-nodes-base.compareValues",
+			"typeVersion": 1,
+			"position": [1300, 300],
+			"id": "7a8b9c0d-1e2f-3g4h-5i6j-7k8l9m0n1o2p",
+			"notes": "Checks if there are more records to process based on the counters."
+		},
+		{
+			"parameters": {
+				"value": "={{ $json }}",
+				"jsCode": "// Get the current record to process\nconst recordIndex = $input.item.processedCount;\nconst currentRecord = $input.item.records[recordIndex];\n\n// Update the context for this iteration\nreturn {\n  ...($input.item),\n  currentRecord,\n  currentIndex: recordIndex\n};"
+			},
+			"name": "Get Next Record",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 1,
+			"position": [1500, 240],
+			"id": "3a4b5c6d-7e8f-9g0h-1i2j-3k4l5m6n7o8p",
+			"notes": "Retrieves the next record to process from the array while maintaining the overall context."
 		},
 		{
 			"parameters": {
 				"operation": "runCustomScript",
 				"url": "={{ $node[\"Configuration\"].json.baseURL }}",
-				"functionCode": "// Current foreclosure record\nconst foreclosure = $input.first().json;\nconst sbl = foreclosure.fields.SBL;\n\n// Navigate to the property search page\nawait $page.goto($input.item.baseURL, { waitUntil: 'networkidle0' });\n\n// Check if agreement overlay appears and click \"agree\" if it does\ntry {\n  const agreeButton = await $page.waitForSelector('input[value=\"I Agree\"]', { timeout: 5000 });\n  if (agreeButton) {\n    console.log('Clicking agree button...');\n    await agreeButton.click();\n    await $page.waitForNavigation({ waitUntil: 'networkidle0' });\n  }\n} catch (error) {\n  console.log('No agreement dialog found or error clicking it:', error.message);\n}\n\n// Wait for the main search page to load\nawait $page.waitForSelector('select[name=\"selectmun\"]');\n\n// Get SBL parts\nlet sblParts = sbl.split('-');\nif (sblParts.length !== 4) {\n  return [\n    {\n      ...foreclosure,\n      error: `Invalid SBL format: ${sbl}. Expected format: XXX-X-XX-XXX`\n    }\n  ];\n}\n\n// Select Ulster municipality (106 = Ulster)\nconst selectMun = await $page.select('select[name=\"selectmun\"]', '106');\n\n// Fill in SBL parts\nawait $page.type('input[name=\"swis\"]', sblParts[0]);\nawait $page.type('input[name=\"section\"]', sblParts[1]);\nawait $page.type('input[name=\"block\"]', sblParts[2]);\nawait $page.type('input[name=\"lot\"]', sblParts[3]);\n\n// Click search button\nconst searchButton = await $page.waitForSelector('input[value=\"Search\"]');\nawait searchButton.click();\n\n// Wait for results\nawait $page.waitForNavigation({ waitUntil: 'networkidle0' });\n\n// Check if we have results\nconst noResultsText = await $page.evaluate(() => {\n  const elem = document.querySelector('body');\n  return elem ? elem.innerText.includes('No records found') : false;\n});\n\nif (noResultsText) {\n  return [\n    {\n      ...foreclosure,\n      error: `No property found for SBL: ${sbl}`\n    }\n  ];\n}\n\n// Click on the first result if available\nconst firstResultLink = await $page.$('a[href^=\"infopage.jsp\"]');\nif (!firstResultLink) {\n  return [\n    {\n      ...foreclosure,\n      error: `No property link found for SBL: ${sbl}`\n    }\n  ];\n}\n\nawait firstResultLink.click();\nawait $page.waitForNavigation({ waitUntil: 'networkidle0' });\n\n// Extract property information\nconst propertyInfo = await $page.evaluate(() => {\n  const getData = (label) => {\n    const labelElement = Array.from(document.querySelectorAll('td')).find(el => el.innerText.includes(label));\n    if (labelElement) {\n      const valueElement = labelElement.nextElementSibling;\n      return valueElement ? valueElement.innerText.trim() : '';\n    }\n    return '';\n  };\n\n  return {\n    owner: getData('Primary Owner:'),\n    propertyAddress: getData('Location:'),\n    propertyClass: getData('Property Class:'),\n    assessedValue: getData('Assessed Value:'),\n    taxableValue: getData('Taxable Value:'),\n    acreage: getData('Acres:'),\n    yearBuilt: getData('Year Built:')\n  };\n});\n\n// Take a screenshot for verification\nconst screenshot = await $page.screenshot({ type: 'png', encoding: 'base64' });\n\n// Return the enriched foreclosure data\nreturn [\n  {\n    ...foreclosure,\n    propertyInfo,\n    binary: {\n      screenshot: {\n        data: screenshot,\n        mimeType: 'image/png',\n        fileName: `property_${sbl}.png`\n      }\n    }\n  }\n];"
+				"functionCode": "// Current foreclosure record\nconst foreclosure = $input.item.currentRecord;\nconst sbl = foreclosure.fields.SBL;\nconst browser = $input.item.browser;\n\n// Use the existing browser\nconsole.log(`Processing record ${$input.item.currentIndex + 1} of ${$input.item.totalCount}: SBL ${sbl}`);\n\n// Navigate to the property search page\nawait $page.goto($node[\"Configuration\"].json.baseURL, { waitUntil: 'networkidle0' });\n\n// Click the Public Access button if it exists\ntry {\n  const publicAccessButton = await $page.waitForSelector('a:has-text(\"Click Here for Public Access\")', { timeout: 5000 });\n  if (publicAccessButton) {\n    console.log('Clicking Public Access button...');\n    await publicAccessButton.click();\n    await $page.waitForNavigation({ waitUntil: 'networkidle0' });\n  }\n} catch (error) {\n  console.log('No Public Access button found or error clicking it:', error.message);\n}\n\n// Check if agreement overlay appears and click \"agree\" if it does\ntry {\n  const agreeButton = await $page.waitForSelector('input[value=\"I Agree\"]', { timeout: 5000 });\n  if (agreeButton) {\n    console.log('Clicking agree button...');\n    await agreeButton.click();\n    await $page.waitForNavigation({ waitUntil: 'networkidle0' });\n  }\n} catch (error) {\n  console.log('No agreement dialog found or error clicking it:', error.message);\n}\n\n// Wait for the search form to load\ntry {\n  await $page.waitForSelector('select[name=\"selectmun\"]', { timeout: 10000 });\n} catch (error) {\n  console.log('Search form not found:', error.message);\n  // Take a screenshot to see what went wrong\n  const errorScreenshot = await $page.screenshot({ type: 'png', encoding: 'base64' });\n  return [\n    {\n      ...($input.item),\n      currentResult: {\n        foreclosure,\n        error: `Search form not found: ${error.message}`,\n        binary: {\n          errorScreenshot: {\n            data: errorScreenshot,\n            mimeType: 'image/png',\n            fileName: `error_${sbl}.png`\n          }\n        }\n      }\n    }\n  ];\n}\n\n// Get SBL parts\nlet sblParts = sbl.split('-');\nif (sblParts.length !== 4) {\n  return [\n    {\n      ...($input.item),\n      currentResult: {\n        foreclosure,\n        error: `Invalid SBL format: ${sbl}. Expected format: XXX-X-XX-XXX`\n      }\n    }\n  ];\n}\n\n// Select Ulster municipality (106 = Ulster)\ntry {\n  await $page.select('select[name=\"selectmun\"]', '106');\n} catch (error) {\n  console.log('Error selecting municipality:', error.message);\n}\n\n// Fill in SBL parts\nawait $page.type('input[name=\"swis\"]', sblParts[0]);\nawait $page.type('input[name=\"section\"]', sblParts[1]);\nawait $page.type('input[name=\"block\"]', sblParts[2]);\nawait $page.type('input[name=\"lot\"]', sblParts[3]);\n\n// Click search button\nconst searchButton = await $page.waitForSelector('input[value=\"Search\"]');\nawait searchButton.click();\n\n// Wait for results\nawait $page.waitForNavigation({ waitUntil: 'networkidle0' });\n\n// Check if we have results\nconst noResultsText = await $page.evaluate(() => {\n  const elem = document.querySelector('body');\n  return elem ? elem.innerText.includes('No records found') : false;\n});\n\nif (noResultsText) {\n  return [\n    {\n      ...($input.item),\n      currentResult: {\n        foreclosure,\n        error: `No property found for SBL: ${sbl}`\n      }\n    }\n  ];\n}\n\n// Click on the first result if available\nconst firstResultLink = await $page.$('a[href*=\"infopage.jsp\"]');\nif (!firstResultLink) {\n  return [\n    {\n      ...($input.item),\n      currentResult: {\n        foreclosure,\n        error: `No property link found for SBL: ${sbl}`\n      }\n    }\n  ];\n}\n\nawait firstResultLink.click();\nawait $page.waitForNavigation({ waitUntil: 'networkidle0' });\n\n// Extract property information\nconst propertyInfo = await $page.evaluate(() => {\n  const getData = (label) => {\n    const labelElement = Array.from(document.querySelectorAll('td')).find(el => el.innerText.includes(label));\n    if (labelElement) {\n      const valueElement = labelElement.nextElementSibling;\n      return valueElement ? valueElement.innerText.trim() : '';\n    }\n    return '';\n  };\n\n  return {\n    owner: getData('Primary Owner:'),\n    propertyAddress: getData('Location:'),\n    propertyClass: getData('Property Class:'),\n    assessedValue: getData('Assessed Value:'),\n    taxableValue: getData('Taxable Value:'),\n    acreage: getData('Acres:'),\n    yearBuilt: getData('Year Built:')\n  };\n});\n\n// Take a screenshot for verification\nconst screenshot = await $page.screenshot({ type: 'png', encoding: 'base64' });\n\n// Return the enriched foreclosure data while maintaining the full context\nreturn [\n  {\n    ...($input.item),\n    currentResult: {\n      foreclosure,\n      propertyInfo,\n      binary: {\n        screenshot: {\n          data: screenshot,\n          mimeType: 'image/png',\n          fileName: `property_${sbl}.png`\n        }\n      }\n    }\n  }\n];"
 			},
 			"name": "Extract Property Info",
 			"type": "n8n-nodes-puppeteer.puppeteer",
 			"typeVersion": 1,
-			"position": [1340, 300],
+			"position": [1700, 240],
 			"id": "8d435d43-16cc-4426-8f02-48110ae678f1",
 			"notes": "Uses Puppeteer to navigate the Ulster County property database, search by SBL number, and extract property information."
 		},
@@ -131,17 +154,17 @@
 					"cachedResultName": "Foreclosures",
 					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblhq8mn3e6u4Ta39"
 				},
-				"id": "={{ $json.id }}",
+				"id": "={{ $json.currentResult.foreclosure.id }}",
 				"updateFields": {
 					"values": {
-						"Owner": "={{ $json.propertyInfo.owner || '' }}",
-						"Property Address": "={{ $json.propertyInfo.propertyAddress || '' }}",
-						"Property Class": "={{ $json.propertyInfo.propertyClass || '' }}",
-						"Assessed Value": "={{ $json.propertyInfo.assessedValue || '' }}",
-						"Taxable Value": "={{ $json.propertyInfo.taxableValue || '' }}",
-						"Acreage": "={{ $json.propertyInfo.acreage || '' }}",
-						"Year Built": "={{ $json.propertyInfo.yearBuilt || '' }}",
-						"Property Error": "={{ $json.error || '' }}",
+						"Owner": "={{ $json.currentResult.propertyInfo.owner || '' }}",
+						"Property": "={{ $json.currentResult.propertyInfo.propertyAddress || '' }}",
+						"Property Class": "={{ $json.currentResult.propertyInfo.propertyClass || '' }}",
+						"Assessed Value": "={{ $json.currentResult.propertyInfo.assessedValue || '' }}",
+						"Taxable Value": "={{ $json.currentResult.propertyInfo.taxableValue || '' }}",
+						"Acreage": "={{ $json.currentResult.propertyInfo.acreage || '' }}",
+						"Year Built": "={{ $json.currentResult.propertyInfo.yearBuilt || '' }}",
+						"Property Error": "={{ $json.currentResult.error || '' }}",
 						"Last Updated": "={{ $now }}"
 					}
 				}
@@ -149,7 +172,7 @@
 			"name": "Update Foreclosure Record",
 			"type": "n8n-nodes-base.airtable",
 			"typeVersion": 2,
-			"position": [1560, 300],
+			"position": [1900, 240],
 			"credentials": {
 				"airtableTokenApi": {
 					"id": "1",
@@ -161,21 +184,15 @@
 		},
 		{
 			"parameters": {
-				"conditions": {
-					"boolean": [
-						{
-							"value1": "={{ $node[\"Process Each Foreclosure\"].context[\"noItemsLeft\"] }}",
-							"value2": true
-						}
-					]
-				}
+				"value": "={{ $json }}",
+				"jsCode": "// Add the result to the results array and increment the counter\nconst updatedContext = {\n  ...($input.item),\n  processedCount: $input.item.processedCount + 1,\n  results: [...$input.item.results, $input.item.currentResult]\n};\n\n// Return the updated context\nreturn updatedContext;"
 			},
-			"name": "All Records Processed?",
-			"type": "n8n-nodes-base.if",
+			"name": "Update Processing Context",
+			"type": "n8n-nodes-base.code",
 			"typeVersion": 1,
-			"position": [1780, 300],
-			"id": "f9c6d5e8-b2c1-4a9e-9edf-c8a7e3b2d1c0",
-			"notes": "Checks if all records have been processed to determine whether to close the browser or continue processing."
+			"position": [2100, 240],
+			"id": "5a6b7c8d-9e0f-1g2h-3i4j-5k6l7m8n9o0p",
+			"notes": "Updates the processing context by incrementing the counter and adding the current result to the results array."
 		},
 		{
 			"parameters": {
@@ -184,9 +201,21 @@
 			"name": "Close Browser",
 			"type": "n8n-nodes-puppeteer.puppeteer",
 			"typeVersion": 1,
-			"position": [2000, 180],
+			"position": [1500, 380],
 			"id": "d8c7b6a5-e3d2-4f1c-bede-a9b8c7d6e5f4",
 			"notes": "Properly closes the browser instance when all records have been processed."
+		},
+		{
+			"parameters": {
+				"value": "={{ $json }}",
+				"jsCode": "// Return the final results\nreturn {\n  processedCount: $input.item.processedCount,\n  totalCount: $input.item.totalCount,\n  results: $input.item.results\n};"
+			},
+			"name": "Return Processing Results",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 1,
+			"position": [1700, 380],
+			"id": "7a8b9c0d-1e2f-3g4h-5i6j-7k8l9m0n1o2p",
+			"notes": "Returns the final processing results including statistics and processed records."
 		}
 	],
 	"connections": {
@@ -227,14 +256,43 @@
 			"main": [
 				[
 					{
-						"node": "Process Each Foreclosure",
+						"node": "Prepare Processing Context",
 						"type": "main",
 						"index": 0
 					}
 				]
 			]
 		},
-		"Process Each Foreclosure": {
+		"Prepare Processing Context": {
+			"main": [
+				[
+					{
+						"node": "More Records to Process?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"More Records to Process?": {
+			"main": [
+				[
+					{
+						"node": "Get Next Record",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Close Browser",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Next Record": {
 			"main": [
 				[
 					{
@@ -260,25 +318,29 @@
 			"main": [
 				[
 					{
-						"node": "All Records Processed?",
+						"node": "Update Processing Context",
 						"type": "main",
 						"index": 0
 					}
 				]
 			]
 		},
-		"All Records Processed?": {
+		"Update Processing Context": {
 			"main": [
 				[
 					{
-						"node": "Close Browser",
+						"node": "More Records to Process?",
 						"type": "main",
 						"index": 0
 					}
-				],
+				]
+			]
+		},
+		"Close Browser": {
+			"main": [
 				[
 					{
-						"node": "Process Each Foreclosure",
+						"node": "Return Processing Results",
 						"type": "main",
 						"index": 0
 					}
