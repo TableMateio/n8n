@@ -30,21 +30,21 @@
 				"application": "airtable",
 				"base": {
 					"__rl": true,
-					"value": "appWI0KqZdKGsHuPe",
+					"value": "appZMhZh6hDrzAnuV",
 					"mode": "list",
 					"cachedResultName": "Tax Surplus Test",
-					"cachedResultUrl": "https://airtable.com/appWI0KqZdKGsHuPe"
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
 				},
 				"table": {
 					"__rl": true,
-					"value": "tblvLGkfHXnrjbOZM",
+					"value": "tblteK8SeHqZ8xQxV",
 					"mode": "list",
 					"cachedResultName": "Auctions",
-					"cachedResultUrl": "https://airtable.com/appWI0KqZdKGsHuPe/tblvLGkfHXnrjbOZM"
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblteK8SeHqZ8xQxV"
 				},
 				"filterByFormula": "AND(NOT({Surplus List}=''),{Foreclosures}='')",
 				"options": {
-					"downloadFields": "Surplus List"
+					"downloadFields": ["Surplus List"]
 				}
 			},
 			"id": "airtable_query",
@@ -62,12 +62,9 @@
 			"typeVersion": 1,
 			"position": [650, 300],
 			"parameters": {
-				"operation": "Extract from PDF",
+				"operation": "pdf",
 				"binaryPropertyName": "Surplus List_0",
-				"options": {
-					"keepSource": "both",
-					"joinPages": true
-				}
+				"options": {}
 			},
 			"id": "extract_pdf",
 			"notes": "Extracts the text content directly from the PDF attachment using the binary field 'Surplus List_0'."
@@ -78,10 +75,10 @@
 			"typeVersion": 1,
 			"position": [850, 300],
 			"parameters": {
-				"functionCode": "// Get the PDF text content and record info\nconst pdfText = $input.item.json.text || '';\nconst recordId = $input.item.json.id || '';\n\n// Safely access fields - handle case where fields object might be undefined\nconst fields = $input.item.json.fields || {};\nconst auctionTitle = fields[\"Auction\"] || \"Unknown Auction\";\n\n// Split the text into lines for processing\nconst lines = pdfText.split('\\n');\n\n// Initialize array to store foreclosure records\nconst foreclosures = [];\n\n// Log info for debugging\nconsole.log(\"Processing PDF content for auction ID:\", recordId);\nconsole.log(\"Auction Title:\", auctionTitle);\n\n// Process line by line\nlet inDataSection = false;\nlet currentRow = {};\nlet parcelIndex = 0;\n\nfor (let i = 0; i < lines.length; i++) {\n  const line = lines[i].trim();\n  \n  // Check if this line contains the column headers\n  if (line.includes(\"PARCEL\") && line.includes(\"TOWN\") && line.includes(\"SBL#\")) {\n    inDataSection = true;\n    continue;\n  }\n  \n  // Skip empty lines or header rows\n  if (!inDataSection || line === '' || line.includes(\"Page |\")) {\n    continue;\n  }\n  \n  // Check if this looks like a parcel entry (typically starts with a number followed by municipality)\n  const parcelMatch = line.match(/^\\s*(\\d+)\\s+([A-Z]+)/);\n  \n  if (parcelMatch) {\n    // If we already have a row in progress, save it\n    if (Object.keys(currentRow).length > 0) {\n      foreclosures.push({...currentRow});\n    }\n    \n    parcelIndex = parcelMatch[1].trim();\n    const townName = parcelMatch[2].trim();\n    \n    // Start a new row\n    currentRow = {\n      parcelIndex: parcelIndex,\n      town: townName\n    };\n    \n    // Try to extract SBL# - format like 056.051-0003-006.000-0000\n    const sblMatch = line.match(/([\\d\\.\\-]+)\\s+([\\d\\-]+)/);\n    if (sblMatch && sblMatch[1].includes(\".\")) {\n      currentRow.sbl = sblMatch[1].trim();\n      \n      // Extract Index # - format like 2021-3086\n      if (sblMatch[2] && sblMatch[2].includes(\"-\")) {\n        currentRow.indexNumber = sblMatch[2].trim();\n      }\n    }\n    \n    // Extract Location - after the index number\n    const locationMatch = line.match(/([\\d]{4}-[\\d]+)\\s+(.+?)\\s+([\\d]{4}\\s+[G|S])/);\n    if (locationMatch) {\n      // If not already set, set the index number\n      if (!currentRow.indexNumber) {\n        currentRow.indexNumber = locationMatch[1].trim();\n      }\n      currentRow.location = locationMatch[2].trim();\n    }\n    \n    // Try to find the sale price (Accept)\n    const salePriceMatch = line.match(/\\$(\\s*[\\d,]+\\.\\d+)\\s+\\$(\\s*[\\d,]+\\.\\d+)\\s+\\$(\\s*[\\d,]+\\.\\d+)/);\n    if (salePriceMatch) {\n      currentRow.salePrice = salePriceMatch[1].replace(/[^\\d\\.]/g, '');\n      currentRow.tax = salePriceMatch[2].replace(/[^\\d\\.]/g, '');\n      currentRow.surplus = salePriceMatch[3].replace(/[^\\d\\.]/g, '');\n    }\n    \n    // Add auction reference data\n    currentRow.auctionId = recordId;\n  } \n  // Check if this is a continuation of the previous row (for multi-line entries)\n  else if (Object.keys(currentRow).length > 0) {\n    // If we don't have a location yet, this might be it\n    if (!currentRow.location) {\n      currentRow.location = line.trim();\n    }\n    \n    // Check for monetary values on this line\n    const moneyMatch = line.match(/\\$(\\s*[\\d,]+\\.\\d+)\\s+\\$(\\s*[\\d,]+\\.\\d+)\\s+\\$(\\s*[\\d,]+\\.\\d+)/);\n    if (moneyMatch && !currentRow.salePrice) {\n      currentRow.salePrice = moneyMatch[1].replace(/[^\\d\\.]/g, '');\n      currentRow.tax = moneyMatch[2].replace(/[^\\d\\.]/g, '');\n      currentRow.surplus = moneyMatch[3].replace(/[^\\d\\.]/g, '');\n    }\n  }\n}\n\n// Don't forget the last row\nif (Object.keys(currentRow).length > 0) {\n  foreclosures.push({...currentRow});\n}\n\n// Map to the field names the user specified\nconst mappedForeclosures = foreclosures.map(f => {\n  return {\n    Number: f.parcelIndex,  // The PARCEL number (first column)\n    SBL: f.sbl || '',  // SBL# field\n    \"Deed Book\": f.indexNumber || '',  // INDEX # field\n    Location: f.location || '',\n    \"Sale Price\": parseFloat(f.salePrice) || 0,\n    Tax: parseFloat(f.tax) || 0,\n    Surplus: parseFloat(f.surplus) || 0,\n    Auction: [recordId],  // Link to the auction record\n    Town: f.town || '',\n    Index: f.indexNumber || ''  // Added Index field\n  };\n});\n\n// Return all foreclosures found with relationship to auction\nreturn {\n  json: {\n    auctionId: recordId,\n    auctionTitle: auctionTitle,\n    foreclosuresCount: mappedForeclosures.length,\n    foreclosures: mappedForeclosures\n  }\n};"
+				"functionCode": "// Get the PDF text content and record info\nconst pdfText = $input.item.json.text || '';\nconst recordId = $input.item.json.id || '';\n\n// Safely access fields - handle case where fields object might be undefined\nconst fields = $input.item.json.fields || {};\nconst auctionTitle = fields[\"Auction\"] || \"Unknown Auction\";\n\n// Log basic info for debugging\nconsole.log(\"Processing PDF content for auction ID:\", recordId);\nconsole.log(\"Auction Title:\", auctionTitle);\nconsole.log(\"PDF extracted text length:\", pdfText.length);\n\n// See if we have metadata about the PDF pages\nconst numPages = $input.item.json.numpages || 1;\nconsole.log(\"PDF has\", numPages, \"pages\");\n\n// Split the text into lines for processing\nconst lines = pdfText.split('\\n');\n\n// Initialize array to store foreclosure records\nconst foreclosures = [];\n\n// Use a simplified approach to extract basic data patterns\nlet inDataSection = false;\nlet currentRow = {};\n\n// Track if we've found any valid entries\nlet foundValidEntries = false;\n\nfor (let i = 0; i < lines.length; i++) {\n  const line = lines[i].trim();\n  \n  // Check if this line contains the column headers\n  if (line.includes(\"PARCEL\") && (line.includes(\"TOWN\") || line.includes(\"SBL\"))) {\n    inDataSection = true;\n    continue;\n  }\n  \n  // Skip empty lines or header rows\n  if (!inDataSection || line === '' || line.includes(\"Page |\")) {\n    continue;\n  }\n  \n  // Try to identify a row that starts with a number (likely a parcel entry)\n  const rowStartMatch = line.match(/^\\s*(\\d+)\\s+([A-Za-z]+)/);\n  \n  if (rowStartMatch) {\n    // If we already have a row in progress, save it\n    if (Object.keys(currentRow).length > 0) {\n      foreclosures.push({...currentRow});\n    }\n    \n    // Start a new row\n    const parcelNum = rowStartMatch[1].trim();\n    const town = rowStartMatch[2].trim();\n    \n    currentRow = {\n      parcelNumber: parcelNum,\n      town: town\n    };\n    \n    // Look for SBL in standard format\n    const sblMatch = line.match(/([\\d]{3}\\.[\\d]{3}-[\\d]{4}-[\\d]{3}\\.[\\d]{3}-[\\d]{4})/);\n    if (sblMatch) {\n      currentRow.sbl = sblMatch[1];\n    }\n    \n    // Look for dollar amounts\n    const moneyMatches = line.match(/\\$([\\d,]+\\.\\d{2})/g);\n    if (moneyMatches && moneyMatches.length >= 3) {\n      currentRow.salePrice = moneyMatches[0].replace(/[^\\d\\.]/g, '');\n      currentRow.tax = moneyMatches[1].replace(/[^\\d\\.]/g, '');\n      currentRow.surplus = moneyMatches[2].replace(/[^\\d\\.]/g, '');\n      foundValidEntries = true;\n    }\n    \n    // Try to extract location - this is challenging and varies by format\n    const afterTownText = line.substring(line.indexOf(town) + town.length).trim();\n    const locationMatch = afterTownText.match(/([\\d]{4}-[\\d]+)\\s+(.+?)\\s+([\\d]{4}\\s+[G|S])/i);\n    \n    if (locationMatch) {\n      currentRow.indexNumber = locationMatch[1];\n      currentRow.location = locationMatch[2].trim();\n    }\n    \n    // Add auction reference data\n    currentRow.auctionId = recordId;\n  } \n  // Check if this is a continuation of the previous row\n  else if (Object.keys(currentRow).length > 0) {\n    // Look for dollar amounts if we don't have them yet\n    if (!currentRow.salePrice) {\n      const moneyMatches = line.match(/\\$([\\d,]+\\.\\d{2})/g);\n      if (moneyMatches && moneyMatches.length >= 3) {\n        currentRow.salePrice = moneyMatches[0].replace(/[^\\d\\.]/g, '');\n        currentRow.tax = moneyMatches[1].replace(/[^\\d\\.]/g, '');\n        currentRow.surplus = moneyMatches[2].replace(/[^\\d\\.]/g, '');\n        foundValidEntries = true;\n      }\n    }\n    \n    // If we don't have a location yet, this might be it\n    if (!currentRow.location && !line.includes(\"$\")) {\n      currentRow.location = line;\n    }\n  }\n}\n\n// Don't forget the last row\nif (Object.keys(currentRow).length > 0) {\n  foreclosures.push({...currentRow});\n}\n\n// Map to the field names expected by Airtable\nconst mappedForeclosures = foreclosures.map(f => {\n  return {\n    Number: f.parcelNumber || '',  // PARCEL number\n    SBL: f.sbl || '',  // SBL# field\n    \"Deed Book\": f.indexNumber || '',  // INDEX # field\n    Location: f.location || '',\n    \"Sale Price\": parseFloat(f.salePrice) || 0,\n    Tax: parseFloat(f.tax) || 0,\n    Surplus: parseFloat(f.surplus) || 0,\n    Auction: [recordId],  // Link to the auction record\n    Town: f.town || '',\n    Index: f.indexNumber || ''  // Added Index field\n  };\n});\n\n// If we found no valid entries with our parsing approach,\n// we should recommend using AI for better results\nlet notes = \"\";\nif (!foundValidEntries) {\n  notes = \"WARNING: No valid foreclosure entries were detected. Consider using AI parsing.\";\n}\n\n// Return all foreclosures found with relationship to auction\nreturn {\n  json: {\n    auctionId: recordId,\n    auctionTitle: auctionTitle,\n    foreclosuresCount: mappedForeclosures.length,\n    notes: notes,\n    foreclosures: mappedForeclosures\n  }\n};"
 			},
 			"id": "parse_pdf",
-			"notes": "Parses the extracted PDF text to identify foreclosure information based on the specific format of surplus list PDFs. Maps the fields to match our database schema: Parcel → Number, SBL# → SBL, Index # → Deed Book, etc."
+			"notes": "Parses the extracted PDF text to identify foreclosure information. This function tries to parse the data but is limited by the PDF format variations. Consider using an AI-based approach for more reliable extraction."
 		},
 		{
 			"name": "Create Foreclosure Records",
@@ -94,63 +91,19 @@
 				"application": "airtable",
 				"base": {
 					"__rl": true,
-					"value": "appWI0KqZdKGsHuPe",
+					"value": "appZMhZh6hDrzAnuV",
 					"mode": "list",
 					"cachedResultName": "Tax Surplus Test",
-					"cachedResultUrl": "https://airtable.com/appWI0KqZdKGsHuPe"
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
 				},
 				"table": {
 					"__rl": true,
-					"value": "tbl1QvMPZQxlOI8Jp",
+					"value": "tblteK8SeHqZ8xQxV",
 					"mode": "list",
 					"cachedResultName": "Foreclosures",
-					"cachedResultUrl": "https://airtable.com/appWI0KqZdKGsHuPe/tbl1QvMPZQxlOI8Jp"
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblteK8SeHqZ8xQxV"
 				},
-				"fields": {
-					"values": [
-						{
-							"name": "Number",
-							"value": "={{ $json.Number }}"
-						},
-						{
-							"name": "SBL",
-							"value": "={{ $json.SBL }}"
-						},
-						{
-							"name": "Deed Book",
-							"value": "={{ $json[\"Deed Book\"] }}"
-						},
-						{
-							"name": "Location",
-							"value": "={{ $json.Location }}"
-						},
-						{
-							"name": "Sale Price",
-							"value": "={{ $json[\"Sale Price\"] }}"
-						},
-						{
-							"name": "Tax",
-							"value": "={{ $json.Tax }}"
-						},
-						{
-							"name": "Surplus",
-							"value": "={{ $json.Surplus }}"
-						},
-						{
-							"name": "Auction",
-							"value": "={{ $json.Auction }}"
-						},
-						{
-							"name": "Town",
-							"value": "={{ $json.Town }}"
-						},
-						{
-							"name": "County",
-							"value": "={{ $json.County }}"
-						}
-					]
-				},
-				"additionalFields": {}
+				"options": {}
 			},
 			"id": "create_foreclosures",
 			"credentials": {
@@ -172,17 +125,17 @@
 				"application": "airtable",
 				"base": {
 					"__rl": true,
-					"value": "appWI0KqZdKGsHuPe",
+					"value": "appZMhZh6hDrzAnuV",
 					"mode": "list",
 					"cachedResultName": "Tax Surplus Test",
-					"cachedResultUrl": "https://airtable.com/appWI0KqZdKGsHuPe"
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
 				},
 				"table": {
 					"__rl": true,
-					"value": "tblvLGkfHXnrjbOZM",
+					"value": "tblteK8SeHqZ8xQxV",
 					"mode": "list",
 					"cachedResultName": "Auctions",
-					"cachedResultUrl": "https://airtable.com/appWI0KqZdKGsHuPe/tblvLGkfHXnrjbOZM"
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblteK8SeHqZ8xQxV"
 				},
 				"id": "={{ $json.auctionId }}",
 				"fields": {
@@ -193,7 +146,7 @@
 						},
 						{
 							"name": "Processing Notes",
-							"value": "={{ \"Created \" + $json.foreclosuresCount + \" foreclosure records on \" + $now }}"
+							"value": "={{ \"Created \" + $json.foreclosuresCount + \" foreclosure records on \" + $now + ($json.notes ? \" - \" + $json.notes : \"\") }}"
 						},
 						{
 							"name": "Foreclosures Updated",
@@ -201,7 +154,7 @@
 						}
 					]
 				},
-				"additionalFields": {}
+				"options": {}
 			},
 			"id": "update_auction",
 			"credentials": {
