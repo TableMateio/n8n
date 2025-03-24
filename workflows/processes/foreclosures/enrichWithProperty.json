@@ -71,6 +71,7 @@
 		},
 		{
 			"parameters": {
+				"operation": "initBrowser",
 				"options": {
 					"headless": "={{ $node[\"Configuration\"].json.headless }}",
 					"stealth": true,
@@ -78,8 +79,7 @@
 						"width": 1280,
 						"height": 800
 					}
-				},
-				"url": "={{ $node[\"Configuration\"].json.baseURL }}"
+				}
 			},
 			"name": "Initialize Browser",
 			"type": "n8n-nodes-puppeteer.puppeteer",
