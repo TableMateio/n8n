@@ -1,0 +1,164 @@
+{
+	"name": "TEST: Puppeteer",
+	"nodes": [
+		{
+			"parameters": {},
+			"name": "Start",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [300, 300]
+		},
+		{
+			"parameters": {
+				"values": {
+					"string": [
+						{
+							"name": "testUrl",
+							"value": "http://imo.ulstercountyny.gov/index.aspx"
+						}
+					]
+				}
+			},
+			"name": "Config",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 2,
+			"position": [500, 300]
+		},
+		{
+			"parameters": {
+				"operation": "initBrowser",
+				"browserOptions": {
+					"headless": false,
+					"stealth": true,
+					"browserArgs": "--no-sandbox, --disable-setuid-sandbox, --disable-dev-shm-usage, --disable-accelerated-2d-canvas, --disable-gpu",
+					"viewport": {
+						"width": 1280,
+						"height": 800
+					}
+				}
+			},
+			"name": "Init Browser",
+			"type": "n8n-nodes-puppeteer.puppeteer",
+			"typeVersion": 1,
+			"position": [700, 300]
+		},
+		{
+			"parameters": {
+				"operation": "goto",
+				"browserInstance": "{{ $node[\"Init Browser\"].json[\"browserInstance\"] }}",
+				"url": "={{ $node[\"Config\"].json[\"testUrl\"] }}",
+				"options": {
+					"waitUntil": "networkidle2",
+					"timeout": 30000
+				}
+			},
+			"name": "Navigate to URL",
+			"type": "n8n-nodes-puppeteer.puppeteer",
+			"typeVersion": 1,
+			"position": [900, 300]
+		},
+		{
+			"parameters": {
+				"operation": "screenshot",
+				"browserInstance": "={{ $node[\"Navigate to URL\"].json[\"browserInstance\"] }}",
+				"options": {}
+			},
+			"name": "Take Screenshot",
+			"type": "n8n-nodes-puppeteer.puppeteer",
+			"typeVersion": 1,
+			"position": [1100, 300]
+		},
+		{
+			"parameters": {
+				"jsCode": "// Just return the data with a nice message\nconst data = $input.item.json;\n\nreturn [\n  {\n    success: true,\n    message: \"Puppeteer test completed successfully\",\n    screenshotBase64: data.screenshot,\n    pageTitle: data.pageTitle,\n    url: data.url\n  }\n];"
+			},
+			"name": "Process Results",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 1,
+			"position": [1300, 300]
+		},
+		{
+			"parameters": {
+				"operation": "closeBrowser",
+				"browserInstance": "={{ $node[\"Take Screenshot\"].json[\"browserInstance\"] }}"
+			},
+			"name": "Close Browser",
+			"type": "n8n-nodes-puppeteer.puppeteer",
+			"typeVersion": 1,
+			"position": [1500, 300]
+		}
+	],
+	"connections": {
+		"Start": {
+			"main": [
+				[
+					{
+						"node": "Config",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Config": {
+			"main": [
+				[
+					{
+						"node": "Init Browser",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Init Browser": {
+			"main": [
+				[
+					{
+						"node": "Navigate to URL",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Navigate to URL": {
+			"main": [
+				[
+					{
+						"node": "Take Screenshot",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Take Screenshot": {
+			"main": [
+				[
+					{
+						"node": "Process Results",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Process Results": {
+			"main": [
+				[
+					{
+						"node": "Close Browser",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"pinData": {},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"tags": []
+}

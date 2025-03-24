@@ -1,245 +1,155 @@
 {
-	"name": "PROCESS: Foreclosures - Enrich with Property",
+	"name": "PROCESS: Foreclosures - Property Enrichment",
 	"nodes": [
 		{
 			"parameters": {},
 			"name": "Start",
 			"type": "n8n-nodes-base.manualTrigger",
 			"typeVersion": 1,
-			"position": [240, 300],
-			"id": "f4c3ebd9-946d-42d6-9b8c-985ca27f2f00"
+			"position": [240, 300]
 		},
 		{
 			"parameters": {
 				"values": {
-					"string": [
-						{
-							"name": "headless",
-							"value": "={{ $json.headless === true }}"
-						},
-						{
-							"name": "baseURL",
-							"value": "http://imo.ulstercountyny.gov/index.aspx"
-						},
+					"number": [
 						{
 							"name": "batchSize",
-							"value": 10
-						},
+							"value": 5
+						}
+					],
+					"string": [
 						{
-							"name": "browserWSEndpoint",
-							"value": ""
+							"name": "defaultSwis",
+							"value": "106"
 						}
 					]
-				},
-				"options": {}
-			},
-			"name": "Configuration",
-			"type": "n8n-nodes-base.set",
-			"typeVersion": 2,
-			"position": [460, 300],
-			"id": "e5c7b337-4a9a-4c8d-882a-b83160a678e5",
-			"notes": "Set key parameters for the workflow. By default the browser is visible (headless=false) for debugging, can be set to true for production."
-		},
-		{
-			"parameters": {
-				"operation": "search",
-				"base": {
-					"__rl": true,
-					"value": "appZMhZh6hDrzAnuV",
-					"mode": "list",
-					"cachedResultName": "Tax Surplus Test",
-					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
-				},
-				"table": {
-					"__rl": true,
-					"value": "tblhq8mn3e6u4Ta39",
-					"mode": "list",
-					"cachedResultName": "Foreclosures",
-					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblhq8mn3e6u4Ta39"
-				},
-				"filterByFormula": "AND({Auction} = \"17-ulster-ny\", {SBL} != \"\", {Property} = \"\")",
-				"limit": "={{ $node[\"Configuration\"].json.batchSize }}"
-			},
-			"name": "Get Foreclosures Needing Property Info",
-			"type": "n8n-nodes-base.airtable",
-			"typeVersion": 2,
-			"position": [680, 300],
-			"credentials": {
-				"airtableTokenApi": {
-					"id": "1",
-					"name": "Airtable"
 				}
 			},
-			"id": "2e5c0b3d-a1b1-4d3b-8fda-b6a6e2c4b0a7",
-			"notes": "Retrieves foreclosure records from Airtable that need property information. Uses the filter to find records from the specific auction that have an SBL but no Property data."
+			"name": "Config",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 2,
+			"position": [400, 300]
 		},
 		{
 			"parameters": {
-				"operation": "runCustomScript",
-				"url": "about:blank",
-				"functionCode": "// Initialize the browser and return the browser object\n// We're not actually using the page here - just initializing the browser\n\n// The browser instance will be used across all records processing\nconsole.log('Initializing browser...');\n\n// Return the browser instance that will be passed to subsequent nodes\nreturn [\n  {\n    currentBrowser: $browser,  // This contains the browser reference that will be accessible\n    isInitialized: true\n  }\n];",
+				"operation": "list",
+				"application": "appLrwpgvmWVG89FF",
+				"table": "tblvFgxDUo0OYjGaW",
 				"options": {
-					"headless": "={{ $node[\"Configuration\"].json.headless }}",
+					"filterByFormula": "AND(Property_Owner = \"\", Status_Code < 3)"
+				},
+				"additionalOptions": {},
+				"splitIntoItems": true
+			},
+			"name": "Get Foreclosures",
+			"type": "n8n-nodes-base.airtable",
+			"typeVersion": 1,
+			"position": [560, 300],
+			"credentials": {
+				"airtableApi": {
+					"id": "13",
+					"name": "Airtable account"
+				}
+			}
+		},
+		{
+			"parameters": {
+				"jsCode": "// Get all records from input\nconst records = $input.all().map(i => i.json);\nconst batchSize = $node[\"Config\"].json.batchSize;\n\n// Create batches\nconst batches = [];\nfor (let i = 0; i < records.length; i += batchSize) {\n  batches.push(records.slice(i, i + batchSize));\n}\n\n// Return first batch for now\nreturn [\n  {\n    batch: 1,\n    totalBatches: batches.length,\n    totalRecords: records.length,\n    records: batches[0] || [],\n    recordCount: (batches[0] || []).length\n  }\n];"
+			},
+			"name": "Prepare Batch",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 1,
+			"position": [720, 300]
+		},
+		{
+			"parameters": {
+				"operation": "initBrowser",
+				"browserOptions": {
+					"headless": false,
 					"stealth": true,
-					"browserWSEndpoint": "={{ $node[\"Configuration\"].json.browserWSEndpoint || null }}",
-					"defaultViewport": {
+					"browserArgs": "--no-sandbox, --disable-setuid-sandbox, --disable-dev-shm-usage, --disable-accelerated-2d-canvas, --disable-gpu",
+					"viewport": {
 						"width": 1280,
 						"height": 800
-					},
-					"launchArguments": "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage",
-					"timeout": 60000
+					}
 				}
 			},
 			"name": "Initialize Browser",
 			"type": "n8n-nodes-puppeteer.puppeteer",
 			"typeVersion": 1,
-			"position": [900, 300],
-			"id": "75173cef-b2d8-4355-b2d9-87f1213b1b79",
-			"notes": "Initializes a Puppeteer browser instance. Headless mode is controlled by the Configuration node, with visibility enabled by default."
+			"position": [880, 300]
 		},
 		{
 			"parameters": {
-				"value": "={{ $node[\"Initialize Browser\"].json }}",
-				"jsCode": "// The browser object comes directly from the Initialize Browser node\nconst browserData = $input.item;\nconst records = $node[\"Get Foreclosures Needing Property Info\"].json;\n\n// Verify we have the browser instance\nif (!browserData || !browserData.currentBrowser) {\n  throw new Error('No browser instance available. Make sure the Initialize Browser node is working correctly.');\n}\n\nconsole.log('Browser initialized successfully with data:', JSON.stringify(browserData));\nconsole.log('Processing', records.length, 'records');\n\n// Initialize counters and containers\nreturn {\n  browser: browserData.currentBrowser,\n  records: records,\n  processedCount: 0,\n  totalCount: records.length,\n  results: []\n};"
+				"jsCode": "// Process each record\nconst batch = $input.item.json;\nconst browserInstance = batch.browserInstance;\nconst defaultSwis = $node[\"Config\"].json.defaultSwis;\n\n// Prepare to collect enriched records\nconst records = [];\n\nfor (const record of batch.records) {\n  // Skip records without SBL\n  if (!record.fields.SBL) {\n    records.push({\n      id: record.id,\n      fields: {\n        ...record.fields,\n        Property_Error: \"Missing SBL\"\n      }\n    });\n    continue;\n  }\n\n  // For now, just pass through and mark as processed\n  // In the real workflow this would do the actual property lookup\n  records.push({\n    id: record.id,\n    fields: {\n      ...record.fields,\n      Processing_Status: \"Ready for property lookup\"\n    }\n  });\n}\n\nreturn [\n  {\n    ...batch,\n    enrichedRecords: records,\n    message: \"Records prepared for property lookup\"\n  }\n];"
 			},
-			"name": "Prepare Processing Context",
+			"name": "Process Records",
 			"type": "n8n-nodes-base.code",
 			"typeVersion": 1,
-			"position": [1100, 300],
-			"id": "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p",
-			"notes": "Combines the browser instance with the records to be processed into a single context object that will be used throughout the workflow."
+			"position": [1040, 300]
 		},
 		{
 			"parameters": {
-				"conditions": {
-					"boolean": [
-						{
-							"value1": "={{ $json.processedCount < $json.totalCount }}",
-							"value2": true
-						}
-					]
-				}
-			},
-			"name": "More Records to Process?",
-			"type": "n8n-nodes-base.if",
-			"typeVersion": 1,
-			"position": [1300, 300],
-			"id": "7a8b9c0d-1e2f-3g4h-5i6j-7k8l9m0n1o2p",
-			"notes": "Checks if there are more records to process based on the counters."
-		},
-		{
-			"parameters": {
-				"value": "={{ $json }}",
-				"jsCode": "// Get the current record to process\nconst recordIndex = $input.item.processedCount;\nconst currentRecord = $input.item.records[recordIndex];\n\n// Update the context for this iteration\nreturn {\n  ...($input.item),\n  currentRecord,\n  currentIndex: recordIndex\n};"
-			},
-			"name": "Get Next Record",
-			"type": "n8n-nodes-base.code",
-			"typeVersion": 1,
-			"position": [1500, 240],
-			"id": "3a4b5c6d-7e8f-9g0h-1i2j-3k4l5m6n7o8p",
-			"notes": "Retrieves the next record to process from the array while maintaining the overall context."
-		},
-		{
-			"parameters": {
-				"operation": "runCustomScript",
-				"url": "={{ $node[\"Configuration\"].json.baseURL }}",
-				"functionCode": "// Current foreclosure record\nconst foreclosure = $input.item.currentRecord;\nconst sbl = foreclosure.fields.SBL;\nconst browser = $input.item.browser;\n\n// Use the existing browser\nconsole.log(`Processing record ${$input.item.currentIndex + 1} of ${$input.item.totalCount}: SBL ${sbl}`);\n\n// Verify we have the browser instance\nif (!browser) {\n  console.log('Browser instance not found:', browser);\n  return [\n    {\n      ...($input.item),\n      currentResult: {\n        foreclosure,\n        error: 'Browser instance not found or invalid'\n      }\n    }\n  ];\n}\n\n// Ensure we have a page\nlet page;\ntry {\n  // Either use the current page or create a new one\n  if ($page) {\n    console.log('Using existing page');\n    page = $page;\n  } else {\n    console.log('Creating new page from browser instance');\n    page = await browser.newPage();\n  }\n  \n  // Navigate to the property search page\n  console.log('Navigating to:', $node[\"Configuration\"].json.baseURL);\n  await page.goto($node[\"Configuration\"].json.baseURL, { waitUntil: 'networkidle0', timeout: 30000 });\n  \n  // Click the Public Access button if it exists\n  try {\n    const publicAccessButton = await page.waitForSelector('a:has-text(\"Click Here for Public Access\")', { timeout: 5000 });\n    if (publicAccessButton) {\n      console.log('Clicking Public Access button...');\n      await publicAccessButton.click();\n      await page.waitForNavigation({ waitUntil: 'networkidle0' });\n    }\n  } catch (error) {\n    console.log('No Public Access button found or error clicking it:', error.message);\n  }\n  \n  // Check if agreement overlay appears and click \"agree\" if it does\n  try {\n    const agreeButton = await page.waitForSelector('input[value=\"I Agree\"]', { timeout: 5000 });\n    if (agreeButton) {\n      console.log('Clicking agree button...');\n      await agreeButton.click();\n      await page.waitForNavigation({ waitUntil: 'networkidle0' });\n    }\n  } catch (error) {\n    console.log('No agreement dialog found or error clicking it:', error.message);\n  }\n  \n  // Wait for the search form to load\n  try {\n    await page.waitForSelector('select[name=\"selectmun\"]', { timeout: 10000 });\n  } catch (error) {\n    console.log('Search form not found:', error.message);\n    // Take a screenshot to see what went wrong\n    const errorScreenshot = await page.screenshot({ type: 'png', encoding: 'base64' });\n    return [\n      {\n        ...($input.item),\n        currentResult: {\n          foreclosure,\n          error: `Search form not found: ${error.message}`,\n          binary: {\n            errorScreenshot: {\n              data: errorScreenshot,\n              mimeType: 'image/png',\n              fileName: `error_${sbl}.png`\n            }\n          }\n        }\n      }\n    ];\n  }\n  \n  // Get SBL parts\n  let sblParts = sbl.split('-');\n  if (sblParts.length !== 4) {\n    return [\n      {\n        ...($input.item),\n        currentResult: {\n          foreclosure,\n          error: `Invalid SBL format: ${sbl}. Expected format: XXX-X-XX-XXX`\n        }\n      }\n    ];\n  }\n  \n  // Select Ulster municipality (106 = Ulster)\n  try {\n    await page.select('select[name=\"selectmun\"]', '106');\n  } catch (error) {\n    console.log('Error selecting municipality:', error.message);\n  }\n  \n  // Fill in SBL parts\n  await page.type('input[name=\"swis\"]', sblParts[0]);\n  await page.type('input[name=\"section\"]', sblParts[1]);\n  await page.type('input[name=\"block\"]', sblParts[2]);\n  await page.type('input[name=\"lot\"]', sblParts[3]);\n  \n  // Click search button\n  const searchButton = await page.waitForSelector('input[value=\"Search\"]');\n  await searchButton.click();\n  \n  // Wait for results\n  await page.waitForNavigation({ waitUntil: 'networkidle0' });\n  \n  // Check if we have results\n  const noResultsText = await page.evaluate(() => {\n    const elem = document.querySelector('body');\n    return elem ? elem.innerText.includes('No records found') : false;\n  });\n  \n  if (noResultsText) {\n    return [\n      {\n        ...($input.item),\n        currentResult: {\n          foreclosure,\n          error: `No property found for SBL: ${sbl}`\n        }\n      }\n    ];\n  }\n  \n  // Click on the first result if available\n  const firstResultLink = await page.$('a[href*=\"infopage.jsp\"]');\n  if (!firstResultLink) {\n    return [\n      {\n        ...($input.item),\n        currentResult: {\n          foreclosure,\n          error: `No property link found for SBL: ${sbl}`\n        }\n      }\n    ];\n  }\n  \n  await firstResultLink.click();\n  await page.waitForNavigation({ waitUntil: 'networkidle0' });\n  \n  // Extract property information\n  const propertyInfo = await page.evaluate(() => {\n    const getData = (label) => {\n      const labelElement = Array.from(document.querySelectorAll('td')).find(el => el.innerText.includes(label));\n      if (labelElement) {\n        const valueElement = labelElement.nextElementSibling;\n        return valueElement ? valueElement.innerText.trim() : '';\n      }\n      return '';\n    };\n  \n    return {\n      owner: getData('Primary Owner:'),\n      propertyAddress: getData('Location:'),\n      propertyClass: getData('Property Class:'),\n      assessedValue: getData('Assessed Value:'),\n      taxableValue: getData('Taxable Value:'),\n      acreage: getData('Acres:'),\n      yearBuilt: getData('Year Built:')\n    };\n  });\n  \n  // Take a screenshot for verification\n  const screenshot = await page.screenshot({ type: 'png', encoding: 'base64' });\n  \n  // If we created our own page in this function, close it to free resources\n  if (page !== $page) {\n    await page.close();\n  }\n  \n  // Return the enriched foreclosure data while maintaining the full context\n  return [\n    {\n      ...($input.item),\n      currentResult: {\n        foreclosure,\n        propertyInfo,\n        binary: {\n          screenshot: {\n            data: screenshot,\n            mimeType: 'image/png',\n            fileName: `property_${sbl}.png`\n          }\n        }\n      }\n    }\n  ];\n} catch (error) {\n  console.error('Error processing record:', error);\n  \n  // Clean up if needed\n  if (page && page !== $page) {\n    try {\n      await page.close();\n    } catch (closeError) {\n      console.error('Error closing page:', closeError);\n    }\n  }\n  \n  // Return the error\n  return [\n    {\n      ...($input.item),\n      currentResult: {\n        foreclosure,\n        error: `Error processing record: ${error.message}`\n      }\n    }\n  ];\n}",
+				"operation": "goto",
+				"browserInstance": "={{ $node[\"Initialize Browser\"].json[\"browserInstance\"] }}",
+				"url": "http://imo.ulstercountyny.gov/index.aspx",
 				"options": {
-					"headless": "={{ $node[\"Configuration\"].json.headless }}",
-					"timeout": 60000,
-					"waitUntil": "networkidle0"
+					"waitUntil": "networkidle2",
+					"timeout": 30000
 				}
 			},
-			"name": "Extract Property Info",
+			"name": "Navigate to Ulster IMO",
 			"type": "n8n-nodes-puppeteer.puppeteer",
 			"typeVersion": 1,
-			"position": [1700, 240],
-			"id": "8d435d43-16cc-4426-8f02-48110ae678f1",
-			"notes": "Uses Puppeteer to navigate the Ulster County property database, search by SBL number, and extract property information."
+			"position": [1040, 160]
+		},
+		{
+			"parameters": {
+				"operation": "evaluate",
+				"browserInstance": "={{ $node[\"Navigate to Ulster IMO\"].json[\"browserInstance\"] }}",
+				"payload": "document.title"
+			},
+			"name": "Check Page Loaded",
+			"type": "n8n-nodes-puppeteer.puppeteer",
+			"typeVersion": 1,
+			"position": [1200, 160]
+		},
+		{
+			"parameters": {
+				"jsCode": "// Get the input items\nconst batch = $input.item.json;\nconst records = batch.enrichedRecords;\n\n// Since we have one input item with all records\nconst output = [];\nfor (const record of records) {\n  output.push({\n    json: record\n  });\n}\n\n// Return as separate items\nreturn output;"
+			},
+			"name": "Split Records",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 1,
+			"position": [1200, 300]
 		},
 		{
 			"parameters": {
 				"operation": "update",
-				"base": {
-					"__rl": true,
-					"value": "appZMhZh6hDrzAnuV",
-					"mode": "list",
-					"cachedResultName": "Tax Surplus Test",
-					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
-				},
-				"table": {
-					"__rl": true,
-					"value": "tblhq8mn3e6u4Ta39",
-					"mode": "list",
-					"cachedResultName": "Foreclosures",
-					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblhq8mn3e6u4Ta39"
-				},
-				"id": "={{ $json.currentResult.foreclosure.id }}",
-				"updateFields": {
-					"values": {
-						"Owner": "={{ $json.currentResult.propertyInfo.owner || '' }}",
-						"Property": "={{ $json.currentResult.propertyInfo.propertyAddress || '' }}",
-						"Property Class": "={{ $json.currentResult.propertyInfo.propertyClass || '' }}",
-						"Assessed Value": "={{ $json.currentResult.propertyInfo.assessedValue || '' }}",
-						"Taxable Value": "={{ $json.currentResult.propertyInfo.taxableValue || '' }}",
-						"Acreage": "={{ $json.currentResult.propertyInfo.acreage || '' }}",
-						"Year Built": "={{ $json.currentResult.propertyInfo.yearBuilt || '' }}",
-						"Property Error": "={{ $json.currentResult.error || '' }}",
-						"Last Updated": "={{ $now }}"
-					}
-				}
+				"application": "appLrwpgvmWVG89FF",
+				"table": "tblvFgxDUo0OYjGaW",
+				"additionalOptions": {}
 			},
-			"name": "Update Foreclosure Record",
+			"name": "Update Airtable",
 			"type": "n8n-nodes-base.airtable",
-			"typeVersion": 2,
-			"position": [1900, 240],
-			"credentials": {
-				"airtableTokenApi": {
-					"id": "1",
-					"name": "Airtable"
-				}
-			},
-			"id": "9e7c3d4f-a1b1-4d3b-8fda-b6a6e2c4b0a7",
-			"notes": "Updates the foreclosure record in Airtable with the property information extracted from the website."
-		},
-		{
-			"parameters": {
-				"value": "={{ $json }}",
-				"jsCode": "// Add the result to the results array and increment the counter\nconst updatedContext = {\n  ...($input.item),\n  processedCount: $input.item.processedCount + 1,\n  results: [...$input.item.results, $input.item.currentResult]\n};\n\n// Return the updated context\nreturn updatedContext;"
-			},
-			"name": "Update Processing Context",
-			"type": "n8n-nodes-base.code",
 			"typeVersion": 1,
-			"position": [2100, 240],
-			"id": "5a6b7c8d-9e0f-1g2h-3i4j-5k6l7m8n9o0p",
-			"notes": "Updates the processing context by incrementing the counter and adding the current result to the results array."
+			"position": [1360, 300],
+			"credentials": {
+				"airtableApi": {
+					"id": "13",
+					"name": "Airtable account"
+				}
+			}
 		},
 		{
 			"parameters": {
-				"operation": "runCustomScript",
-				"functionCode": "// Close the browser instance\nconsole.log('Closing browser...');\n\nif ($input.item.browser) {\n  try {\n    await $input.item.browser.close();\n    console.log('Browser closed successfully');\n  } catch (error) {\n    console.log('Error closing browser:', error.message);\n  }\n} else {\n  console.log('No browser instance found to close');\n}\n\nreturn [$input.item];",
-				"options": {
-					"timeout": 60000
-				}
+				"operation": "closeBrowser",
+				"browserInstance": "={{ $node[\"Check Page Loaded\"].json[\"browserInstance\"] }}"
 			},
 			"name": "Close Browser",
 			"type": "n8n-nodes-puppeteer.puppeteer",
 			"typeVersion": 1,
-			"position": [1500, 380],
-			"id": "d8c7b6a5-e3d2-4f1c-bede-a9b8c7d6e5f4",
-			"notes": "Properly closes the browser instance when all records have been processed."
-		},
-		{
-			"parameters": {
-				"value": "={{ $json }}",
-				"jsCode": "// Return the final results\nreturn {\n  processedCount: $input.item.processedCount,\n  totalCount: $input.item.totalCount,\n  results: $input.item.results\n};"
-			},
-			"name": "Return Processing Results",
-			"type": "n8n-nodes-base.code",
-			"typeVersion": 1,
-			"position": [1700, 380],
-			"id": "7a8b9c0d-1e2f-3g4h-5i6j-7k8l9m0n1o2p",
-			"notes": "Returns the final processing results including statistics and processed records."
+			"position": [1520, 300]
 		}
 	],
 	"connections": {
@@ -247,25 +157,36 @@
 			"main": [
 				[
 					{
-						"node": "Configuration",
+						"node": "Config",
 						"type": "main",
 						"index": 0
 					}
 				]
 			]
 		},
-		"Configuration": {
+		"Config": {
 			"main": [
 				[
 					{
-						"node": "Get Foreclosures Needing Property Info",
+						"node": "Get Foreclosures",
 						"type": "main",
 						"index": 0
 					}
 				]
 			]
 		},
-		"Get Foreclosures Needing Property Info": {
+		"Get Foreclosures": {
+			"main": [
+				[
+					{
+						"node": "Prepare Batch",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Prepare Batch": {
 			"main": [
 				[
 					{
@@ -280,91 +201,56 @@
 			"main": [
 				[
 					{
-						"node": "Prepare Processing Context",
+						"node": "Navigate to Ulster IMO",
+						"type": "main",
+						"index": 0
+					},
+					{
+						"node": "Process Records",
 						"type": "main",
 						"index": 0
 					}
 				]
 			]
 		},
-		"Prepare Processing Context": {
+		"Process Records": {
 			"main": [
 				[
 					{
-						"node": "More Records to Process?",
+						"node": "Split Records",
 						"type": "main",
 						"index": 0
 					}
 				]
 			]
 		},
-		"More Records to Process?": {
+		"Navigate to Ulster IMO": {
 			"main": [
 				[
 					{
-						"node": "Get Next Record",
+						"node": "Check Page Loaded",
 						"type": "main",
 						"index": 0
 					}
-				],
+				]
+			]
+		},
+		"Split Records": {
+			"main": [
+				[
+					{
+						"node": "Update Airtable",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Update Airtable": {
+			"main": [
 				[
 					{
 						"node": "Close Browser",
-						"type": "main",
-						"index": 0
-					}
-				]
-			]
-		},
-		"Get Next Record": {
-			"main": [
-				[
-					{
-						"node": "Extract Property Info",
-						"type": "main",
-						"index": 0
-					}
-				]
-			]
-		},
-		"Extract Property Info": {
-			"main": [
-				[
-					{
-						"node": "Update Foreclosure Record",
-						"type": "main",
-						"index": 0
-					}
-				]
-			]
-		},
-		"Update Foreclosure Record": {
-			"main": [
-				[
-					{
-						"node": "Update Processing Context",
-						"type": "main",
-						"index": 0
-					}
-				]
-			]
-		},
-		"Update Processing Context": {
-			"main": [
-				[
-					{
-						"node": "More Records to Process?",
-						"type": "main",
-						"index": 0
-					}
-				]
-			]
-		},
-		"Close Browser": {
-			"main": [
-				[
-					{
-						"node": "Return Processing Results",
 						"type": "main",
 						"index": 0
 					}
@@ -375,10 +261,6 @@
 	"pinData": {},
 	"settings": {
 		"executionOrder": "v1"
-	},
-	"versionId": "",
-	"meta": {
-		"instanceId": "4dba8cd386ae3944b2fc7eaa8a1fd4bf66504415151768c62f3b476b5123f76d"
 	},
 	"tags": []
 }
