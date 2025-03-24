@@ -1,0 +1,75 @@
+{
+	"name": "TEST: Puppeteer Remote Browser",
+	"nodes": [
+		{
+			"parameters": {},
+			"name": "Start",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [240, 300]
+		},
+		{
+			"parameters": {
+				"values": {
+					"string": [
+						{
+							"name": "browserWSEndpoint",
+							"value": "ws://localhost:3000"
+						},
+						{
+							"name": "testUrl",
+							"value": "https://example.com"
+						}
+					]
+				},
+				"options": {}
+			},
+			"name": "Config",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 2,
+			"position": [440, 300]
+		},
+		{
+			"parameters": {
+				"operation": "runCustomScript",
+				"url": "={{ $node[\"Config\"].json.testUrl }}",
+				"functionCode": "// Simple test script to verify browser connection\nconsole.log('Using browser endpoint:', $node[\"Config\"].json.browserWSEndpoint);\nconsole.log('Navigating to:', $node[\"Config\"].json.testUrl);\n\n// Get page title\nconst title = await $page.title();\n\n// Get page content\nconst content = await $page.content();\n\n// Take a screenshot\nconst screenshot = await $page.screenshot({ type: 'png', encoding: 'base64' });\n\nreturn [\n  {\n    success: true,\n    title,\n    contentLength: content.length,\n    binary: {\n      screenshot: {\n        data: screenshot,\n        mimeType: 'image/png',\n        fileName: 'screenshot.png'\n      }\n    }\n  }\n];",
+				"options": {
+					"browserWSEndpoint": "={{ $node[\"Config\"].json.browserWSEndpoint }}"
+				}
+			},
+			"name": "Browser Test",
+			"type": "n8n-nodes-puppeteer.puppeteer",
+			"typeVersion": 1,
+			"position": [640, 300]
+		}
+	],
+	"connections": {
+		"Start": {
+			"main": [
+				[
+					{
+						"node": "Config",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Config": {
+			"main": [
+				[
+					{
+						"node": "Browser Test",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"tags": []
+}
