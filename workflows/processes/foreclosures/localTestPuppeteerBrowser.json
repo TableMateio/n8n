@@ -14,7 +14,7 @@
 					"string": [
 						{
 							"name": "seleniumUrl",
-							"value": "http://localhost:4444/wd/hub"
+							"value": "http://127.0.0.1:4444/wd/hub"
 						},
 						{
 							"name": "testUrl",
@@ -31,7 +31,7 @@
 		},
 		{
 			"parameters": {
-				"jsCode": "// Get the configuration\nconst seleniumUrl = $input.item.json.seleniumUrl;\nconst testUrl = $input.item.json.testUrl;\n\n// This is a placeholder for actual Selenium WebDriver code\n// In n8n, we would normally use the Puppeteer node, but since we're\n// having connection issues, let's create a simple code node for now\n\nreturn [\n  {\n    success: true,\n    message: 'To access the browser, please open this URL in your browser:',\n    browserLink: 'http://localhost:7900/?autoconnect=1&resize=scale&password=secret'\n  }\n];"
+				"jsCode": "// Get the configuration\nconst seleniumUrl = $input.item.json.seleniumUrl;\nconst testUrl = $input.item.json.testUrl;\n\n// This is a placeholder for actual Selenium WebDriver code\n// In n8n, we would normally use the Puppeteer node, but since we're\n// having connection issues, let's create a simple code node for now\n\nreturn [\n  {\n    success: true,\n    message: 'To access the browser, please open this URL in your browser:',\n    browserLink: 'http://127.0.0.1:7900/?autoconnect=1&resize=scale&password=secret'\n  }\n];"
 			},
 			"name": "Browser Instructions",
 			"type": "n8n-nodes-base.code",

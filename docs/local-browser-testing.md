@@ -22,7 +22,7 @@ This will:
 You can view the browser directly in your web browser:
 
 1. Open your web browser
-2. Navigate to http://localhost:7900/?autoconnect=1&resize=scale&password=secret
+2. Navigate to http://127.0.0.1:7900/?autoconnect=1&resize=scale&password=secret
 3. You should now see the Chromium browser running in the container
 
 **Default password**: `secret`
@@ -38,7 +38,7 @@ In n8n, run the "LOCAL TEST: Puppeteer Visible Browser" workflow:
 
 This container exposes a standard Selenium WebDriver endpoint at:
 ```
-http://localhost:4444/wd/hub
+http://127.0.0.1:4444/wd/hub
 ```
 
 You can connect to this endpoint from various testing frameworks and tools.
@@ -53,7 +53,7 @@ When creating automation workflows in n8n:
 
 ## Switching Between Development and Production
 
-- **Development (Local)**: Use the local Selenium endpoint `http://localhost:4444/wd/hub`
+- **Development (Local)**: Use the local Selenium endpoint `http://127.0.0.1:4444/wd/hub`
 - **Production (Railway)**: Use Railway with headless mode or Browserless endpoint
 
 ## Useful Docker Commands
@@ -89,7 +89,7 @@ If you can't connect to the browser:
 If you can't access the noVNC interface:
 1. Make sure port 7900 is available and not used by another application
 2. Try using the password `secret` when prompted
-3. Check that your firewall isn't blocking the connection
+3. **Important**: Use `127.0.0.1` instead of `localhost` in URLs (e.g., `http://127.0.0.1:7900`)
 
 ### Browser Crashes or Freezes
 
