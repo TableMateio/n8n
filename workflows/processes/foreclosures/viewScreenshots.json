@@ -1,0 +1,198 @@
+{
+	"name": "UTILITY: View Execution Screenshots",
+	"nodes": [
+		{
+			"parameters": {},
+			"name": "Start",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [240, 300]
+		},
+		{
+			"parameters": {
+				"values": {
+					"string": [
+						{
+							"name": "workflowId",
+							"value": "qFunKxyA9btl2Qq1"
+						},
+						{
+							"name": "executionId",
+							"value": ""
+						}
+					]
+				},
+				"options": {}
+			},
+			"name": "Configuration",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 2,
+			"position": [460, 300]
+		},
+		{
+			"parameters": {
+				"resource": "execution",
+				"operation": "getAll",
+				"filters": {
+					"conditions": [
+						{
+							"key": "workflowId",
+							"value": "={{ $node[\"Configuration\"].json.workflowId }}"
+						}
+					]
+				},
+				"options": {
+					"limit": 5
+				}
+			},
+			"name": "Get Recent Executions",
+			"type": "n8n-nodes-base.n8n",
+			"typeVersion": 1,
+			"position": [660, 300],
+			"credentials": {
+				"n8nApi": {
+					"id": "1",
+					"name": "Local n8n"
+				}
+			}
+		},
+		{
+			"parameters": {
+				"resource": "execution",
+				"operation": "get",
+				"executionId": "={{ $node[\"Configuration\"].json.executionId ? $node[\"Configuration\"].json.executionId : $node[\"Get Recent Executions\"].json[0]?.id }}"
+			},
+			"name": "Get Execution Data",
+			"type": "n8n-nodes-base.n8n",
+			"typeVersion": 1,
+			"position": [860, 300],
+			"credentials": {
+				"n8nApi": {
+					"id": "1",
+					"name": "Local n8n"
+				}
+			}
+		},
+		{
+			"parameters": {
+				"mode": "runOnceForEachItem"
+			},
+			"name": "Iterator",
+			"type": "n8n-nodes-base.splitInBatches",
+			"typeVersion": 2,
+			"position": [1060, 300]
+		},
+		{
+			"parameters": {
+				"jsCode": "// Find the node output that contains our screenshots\nconst data = $input.item.json.data;\nconst nodeExecutions = data.resultData.runData;\n\n// Look for the Extract Property Info node output\nlet screenshots = {};\nlet propertyInfo = {};\nlet sbl = '';\n\nfor (const nodeName in nodeExecutions) {\n  if (nodeName === 'Extract Property Info') {\n    const nodeData = nodeExecutions[nodeName][0]?.data?.main[0][0];\n    \n    if (nodeData) {\n      if (nodeData.binary) {\n        screenshots = nodeData.binary;\n      }\n      \n      if (nodeData.json?.propertyInfo) {\n        propertyInfo = nodeData.json.propertyInfo;\n      }\n      \n      if (nodeData.json?.fields?.SBL) {\n        sbl = nodeData.json.fields.SBL;\n      }\n    }\n  }\n}\n\n// Get all screenshot keys and prepare a clean return object\nconst screenshotKeys = Object.keys(screenshots);\n\nreturn {\n  executionId: data.id,\n  sbl,\n  propertyInfo,\n  screenshotCount: screenshotKeys.length,\n  screenshotKeys,\n  screenshots\n};"
+			},
+			"name": "Extract Screenshots",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [1260, 300]
+		},
+		{
+			"parameters": {
+				"jsCode": "// Create a nice HTML report with the screenshots\nconst data = $input.item.json;\n\nlet html = `\n<!DOCTYPE html>\n<html>\n<head>\n  <title>Screenshot Viewer - SBL: ${data.sbl || 'Unknown'}</title>\n  <style>\n    body { font-family: Arial, sans-serif; margin: 20px; }\n    h1 { color: #333; }\n    .property-info { background: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; }\n    .property-info h2 { margin-top: 0; }\n    .property-info table { width: 100%; border-collapse: collapse; }\n    .property-info td { padding: 8px; border-bottom: 1px solid #ddd; }\n    .property-info td:first-child { font-weight: bold; width: 200px; }\n    \n    .screenshots { display: flex; flex-direction: column; gap: 30px; }\n    .screenshot { border: 1px solid #ddd; padding: 15px; border-radius: 5px; }\n    .screenshot h3 { margin-top: 0; color: #444; }\n    .screenshot p { color: #666; margin-bottom: 10px; }\n    .screenshot img { max-width: 100%; border: 1px solid #eee; }\n  </style>\n</head>\n<body>\n  <h1>Screenshot Report for SBL: ${data.sbl || 'Unknown'}</h1>\n  \n  <div class=\"property-info\">\n    <h2>Property Information</h2>\n    <table>`;\n    \n// Add property info if available\nif (Object.keys(data.propertyInfo || {}).length > 0) {\n  for (const [key, value] of Object.entries(data.propertyInfo)) {\n    const formattedKey = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());\n    html += `\n      <tr>\n        <td>${formattedKey}</td>\n        <td>${value || 'N/A'}</td>\n      </tr>`;\n  }\n} else {\n  html += `\n      <tr>\n        <td colspan=\"2\">No property information available</td>\n      </tr>`;\n}\n\nhtml += `\n    </table>\n  </div>\n  \n  <h2>Screenshots (${data.screenshotCount})</h2>\n  <div class=\"screenshots\">`;\n\n// Add screenshots\nif (data.screenshotKeys?.length > 0) {\n  for (const key of data.screenshotKeys) {\n    const screenshot = data.screenshots[key];\n    const description = screenshot.description || key;\n    \n    html += `\n    <div class=\"screenshot\">\n      <h3>${key}</h3>\n      <p>${description}</p>\n      <img src=\"data:image/png;base64,${screenshot.data}\" alt=\"${key}\" />\n    </div>`;\n  }\n} else {\n  html += `\n    <p>No screenshots available</p>`;\n}\n\nhtml += `\n  </div>\n</body>\n</html>`;\n\nreturn {\n  html\n};"
+			},
+			"name": "Create HTML Report",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [1460, 300]
+		},
+		{
+			"parameters": {
+				"respondWith": "json",
+				"responseData": "={{\n  return {\n    html: $node[\"Create HTML Report\"].json.html,\n    contentType: 'text/html'\n  }\n}}",
+				"options": {}
+			},
+			"name": "Respond with HTML",
+			"type": "n8n-nodes-base.respondToWebhook",
+			"typeVersion": 1,
+			"position": [1660, 300]
+		}
+	],
+	"connections": {
+		"Start": {
+			"main": [
+				[
+					{
+						"node": "Configuration",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Configuration": {
+			"main": [
+				[
+					{
+						"node": "Get Recent Executions",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Recent Executions": {
+			"main": [
+				[
+					{
+						"node": "Get Execution Data",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Execution Data": {
+			"main": [
+				[
+					{
+						"node": "Iterator",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Iterator": {
+			"main": [
+				[
+					{
+						"node": "Extract Screenshots",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Extract Screenshots": {
+			"main": [
+				[
+					{
+						"node": "Create HTML Report",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Create HTML Report": {
+			"main": [
+				[
+					{
+						"node": "Respond with HTML",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"tags": []
+}
