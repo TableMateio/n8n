@@ -1,0 +1,254 @@
+{
+	"name": "PROCESS: Foreclosures - Property Info Lookup",
+	"nodes": [
+		{
+			"parameters": {},
+			"name": "Start",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [240, 300]
+		},
+		{
+			"parameters": {
+				"values": {
+					"string": [
+						{
+							"name": "seleniumUrl",
+							"value": "http://127.0.0.1:4444/wd/hub"
+						},
+						{
+							"name": "browserViewUrl",
+							"value": "http://127.0.0.1:7900/?autoconnect=1&resize=scale&password=secret"
+						},
+						{
+							"name": "batchSize",
+							"value": "5"
+						},
+						{
+							"name": "countyConfigKey",
+							"value": "Ulster"
+						}
+					],
+					"object": [
+						{
+							"name": "countyConfigs",
+							"value": {
+								"Ulster": {
+									"baseUrl": "http://imo.ulstercountyny.gov/index.aspx",
+									"selectors": {
+										"publicAccess": {
+											"type": "linkText",
+											"value": "Click Here for Public Access"
+										},
+										"agreement": {
+											"type": "css",
+											"value": "input[value=\"I Agree\"]"
+										},
+										"municipalitySelect": {
+											"type": "css",
+											"value": "select[name=\"selectmun\"]"
+										},
+										"swisField": {
+											"type": "css",
+											"value": "input[name=\"swis\"]"
+										},
+										"sectionField": {
+											"type": "css",
+											"value": "input[name=\"section\"]"
+										},
+										"blockField": {
+											"type": "css",
+											"value": "input[name=\"block\"]"
+										},
+										"lotField": {
+											"type": "css",
+											"value": "input[name=\"lot\"]"
+										},
+										"searchButton": {
+											"type": "css",
+											"value": "input[value=\"Search\"]"
+										},
+										"resultsTable": {
+											"type": "css",
+											"value": "table.GridViewStyle"
+										},
+										"ownerInfo": {
+											"type": "xpath",
+											"value": "//td[contains(text(), \"Owner\")]/following-sibling::td[1]"
+										},
+										"addressInfo": {
+											"type": "xpath",
+											"value": "//td[contains(text(), \"Address\")]/following-sibling::td[1]"
+										},
+										"assessmentInfo": {
+											"type": "xpath",
+											"value": "//td[contains(text(), \"Total Assessment\")]/following-sibling::td[1]"
+										}
+									},
+									"defaultSwis": "106"
+								},
+								"Dutchess": {
+									"baseUrl": "https://gis.dutchessny.gov/parcelaccess/parcelviewer.htm",
+									"selectors": {
+										"searchTab": {
+											"type": "id",
+											"value": "search"
+										},
+										"parcelIdField": {
+											"type": "id",
+											"value": "parcelid"
+										},
+										"searchButton": {
+											"type": "id",
+											"value": "btnSearch"
+										},
+										"resultsTable": {
+											"type": "id",
+											"value": "tblresults"
+										}
+									}
+								}
+							}
+						}
+					]
+				},
+				"options": {}
+			},
+			"name": "Config",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 2,
+			"position": [400, 300]
+		},
+		{
+			"parameters": {
+				"operation": "list",
+				"application": "==BASE_ID==",
+				"table": "==TABLE_ID==",
+				"additionalOptions": {},
+				"splitIntoItems": true
+			},
+			"name": "Get Foreclosures",
+			"type": "n8n-nodes-base.airtable",
+			"typeVersion": 1,
+			"position": [560, 300],
+			"credentials": {
+				"airtableApi": "Airtable Account"
+			}
+		},
+		{
+			"parameters": {
+				"jsCode": "// Show the browser view URL for visual monitoring\n// Get the configuration from previous node\nconst config = $input.first().json;\nconst countyConfig = config.countyConfigs[config.countyConfigKey];\n\nreturn [\n  {\n    ...config,\n    items: $input.all().map(item => item.json),\n    message: 'Open this URL to view the browser automation:',\n    selectedCounty: config.countyConfigKey,\n    countyConfig: countyConfig\n  }\n];"
+			},
+			"name": "Prepare Batch",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 1,
+			"position": [720, 300]
+		},
+		{
+			"parameters": {
+				"jsCode": "// Get the inputs\nconst inputs = $input.item.json;\nconst seleniumUrl = inputs.seleniumUrl;\nconst countyConfig = inputs.countyConfig;\nconst items = inputs.items;\nconst batchSize = parseInt(inputs.batchSize) || 5;\n\n// Split items into batches\nconst batches = [];\nfor (let i = 0; i < items.length; i += batchSize) {\n  batches.push(items.slice(i, i + batchSize));\n}\n\n// Return the batches\nreturn batches.map((batch, index) => ({\n  ...inputs,\n  batchIndex: index + 1,\n  totalBatches: batches.length,\n  batchItems: batch\n}));"
+			},
+			"name": "Create Batches",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 1,
+			"position": [880, 300]
+		},
+		{
+			"parameters": {
+				"jsCode": "// This is the implementation for Selenium-based property lookup\n// In a production setting, you'd likely use specific Selenium nodes for this\n\nconst { Builder, By, Key, until } = require('selenium-webdriver');\nconst chrome = require('selenium-webdriver/chrome');\n\n// Get inputs from the previous node\nconst inputs = $input.item.json;\nconst seleniumUrl = inputs.seleniumUrl;\nconst countyConfig = inputs.countyConfig;\nconst batchItems = inputs.batchItems;\n\n// Function to wait a bit\nasync function sleep(ms) {\n  return new Promise(resolve => setTimeout(resolve, ms));\n}\n\n// Function to use the right selector type\nasync function findElement(driver, selector) {\n  if (!selector) return null;\n  \n  switch (selector.type) {\n    case 'css':\n      return await driver.findElement(By.css(selector.value));\n    case 'id':\n      return await driver.findElement(By.id(selector.value));\n    case 'xpath':\n      return await driver.findElement(By.xpath(selector.value));\n    case 'linkText':\n      return await driver.findElement(By.linkText(selector.value));\n    default:\n      throw new Error(`Unknown selector type: ${selector.type}`);\n  }\n}\n\nasync function processUlsterCountyRecord(driver, record) {\n  try {\n    const sbl = record.fields.SBL;\n    if (!sbl) {\n      return { ...record, error: 'No SBL provided' };\n    }\n    \n    console.log(`Processing record with SBL: ${sbl}`);\n    const sblParts = sbl.split('-');\n    \n    // Navigate to the base URL if it's the first record or URL has changed\n    await driver.get(countyConfig.baseUrl);\n    await sleep(2000);\n    \n    // Click on the Public Access link if present\n    try {\n      const publicAccessLink = await findElement(driver, countyConfig.selectors.publicAccess);\n      if (publicAccessLink) {\n        console.log('Clicking on Public Access link');\n        await publicAccessLink.click();\n        await sleep(2000);\n      }\n    } catch (err) {\n      console.log('Public Access link not found, continuing...');\n    }\n    \n    // Check for and click the agreement button if present\n    try {\n      const agreeButton = await findElement(driver, countyConfig.selectors.agreement);\n      if (agreeButton) {\n        console.log('Clicking on I Agree button');\n        await agreeButton.click();\n        await sleep(2000);\n      }\n    } catch (err) {\n      console.log('Agreement button not found, continuing...');\n    }\n    \n    // Wait for and select the municipality dropdown\n    console.log('Selecting municipality...');\n    const municipalitySelect = await findElement(driver, countyConfig.selectors.municipalitySelect);\n    if (municipalitySelect) {\n      await municipalitySelect.sendKeys(countyConfig.defaultSwis || sblParts[0]);\n      await sleep(1000);\n    }\n    \n    // Fill in the SBL parts\n    console.log('Filling in SBL fields...');\n    const swisField = await findElement(driver, countyConfig.selectors.swisField);\n    if (swisField) {\n      await swisField.sendKeys(sblParts[0]);\n      await sleep(500);\n    }\n    \n    const sectionField = await findElement(driver, countyConfig.selectors.sectionField);\n    if (sectionField) {\n      await sectionField.sendKeys(sblParts[1]);\n      await sleep(500);\n    }\n    \n    const blockField = await findElement(driver, countyConfig.selectors.blockField);\n    if (blockField) {\n      await blockField.sendKeys(sblParts[2]);\n      await sleep(500);\n    }\n    \n    const lotField = await findElement(driver, countyConfig.selectors.lotField);\n    if (lotField) {\n      await lotField.sendKeys(sblParts[3]);\n      await sleep(1000);\n    }\n    \n    // Click search button\n    console.log('Clicking search button...');\n    const searchButton = await findElement(driver, countyConfig.selectors.searchButton);\n    if (searchButton) {\n      await searchButton.click();\n      await sleep(3000);\n    }\n    \n    // Extract property information\n    let propertyInfo = {};\n    try {\n      // Wait for results to load\n      await driver.wait(until.elementLocated(By.css(countyConfig.selectors.resultsTable.value)), 10000);\n      \n      // Extract information\n      const ownerElement = await findElement(driver, countyConfig.selectors.ownerInfo);\n      if (ownerElement) {\n        propertyInfo.owner = await ownerElement.getText();\n      }\n      \n      const addressElement = await findElement(driver, countyConfig.selectors.addressInfo);\n      if (addressElement) {\n        propertyInfo.address = await addressElement.getText();\n      }\n      \n      const assessmentElement = await findElement(driver, countyConfig.selectors.assessmentInfo);\n      if (assessmentElement) {\n        propertyInfo.assessment = await assessmentElement.getText();\n      }\n      \n      // Take a screenshot for verification\n      propertyInfo.screenshot = await driver.takeScreenshot();\n      \n      return {\n        ...record,\n        fields: {\n          ...record.fields,\n          Property_Owner: propertyInfo.owner,\n          Property_Address: propertyInfo.address,\n          Assessed_Value: propertyInfo.assessment,\n          Last_Updated: new Date().toISOString()\n        },\n        success: true\n      };\n    } catch (error) {\n      console.error('Error extracting property information:', error);\n      return {\n        ...record,\n        error: `Failed to extract property information: ${error.message}`\n      };\n    }\n  } catch (error) {\n    console.error('Processing error:', error);\n    return { ...record, error: error.message };\n  }\n}\n\nasync function processDutchessCountyRecord(driver, record) {\n  // Implementation for Dutchess County would go here\n  // Similar to Ulster but with appropriate selectors\n  return { ...record, error: 'Dutchess County processing not yet implemented' };\n}\n\n// For demo purposes, we'll just return the items without processing\n// In a real implementation, you would use the Selenium code\nreturn $input.item.json.batchItems.map(item => {\n  return {\n    ...item,\n    simulatedProcess: true,\n    message: `In production, this would use Selenium WebDriver to look up property info for record ${item.id}`,\n    county: inputs.selectedCounty\n  };\n});"
+			},
+			"name": "Process Records",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 1,
+			"position": [1040, 300]
+		},
+		{
+			"parameters": {
+				"operation": "update",
+				"application": "==BASE_ID==",
+				"table": "==TABLE_ID==",
+				"additionalOptions": {}
+			},
+			"name": "Update Airtable",
+			"type": "n8n-nodes-base.airtable",
+			"typeVersion": 1,
+			"position": [1200, 300],
+			"credentials": {
+				"airtableApi": "Airtable Account"
+			}
+		}
+	],
+	"connections": {
+		"Start": {
+			"main": [
+				[
+					{
+						"node": "Config",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Config": {
+			"main": [
+				[
+					{
+						"node": "Get Foreclosures",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Foreclosures": {
+			"main": [
+				[
+					{
+						"node": "Prepare Batch",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Prepare Batch": {
+			"main": [
+				[
+					{
+						"node": "Create Batches",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Create Batches": {
+			"main": [
+				[
+					{
+						"node": "Process Records",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Process Records": {
+			"main": [
+				[
+					{
+						"node": "Update Airtable",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"pinData": {},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"tags": []
+}
