@@ -14,7 +14,7 @@
 					"string": [
 						{
 							"name": "browserWSEndpoint",
-							"value": "ws://localhost:3000"
+							"value": "wss://browserless-production-2a8f.up.railway.app?token=8laRXWn6OtaJL51zdKbrfbeERbrwWh41m6YhzSJRfkuiLmh1"
 						},
 						{
 							"name": "baseURL",
