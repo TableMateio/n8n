@@ -1,0 +1,207 @@
+{
+	"name": "TEST: Browserless",
+	"nodes": [
+		{
+			"parameters": {},
+			"name": "Start",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [300, 300]
+		},
+		{
+			"parameters": {
+				"values": {
+					"string": [
+						{
+							"name": "testUrl",
+							"value": "http://imo.ulstercountyny.gov/index.aspx"
+						},
+						{
+							"name": "browserlessUrl",
+							"value": "http://localhost:3000"
+						},
+						{
+							"name": "browserlessToken",
+							"value": "6R0W53R135510"
+						}
+					]
+				}
+			},
+			"name": "Config",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 2,
+			"position": [500, 300]
+		},
+		{
+			"parameters": {
+				"url": "={{ $node[\"Config\"].json[\"testUrl\"] }}",
+				"options": {
+					"stealth": true,
+					"headless": false
+				}
+			},
+			"name": "Get Page Content",
+			"type": "n8n-nodes-browserless.browserless",
+			"typeVersion": 1,
+			"position": [700, 300],
+			"credentials": {
+				"browserlessApi": {
+					"id": "browserlessApi",
+					"name": "Browserless account"
+				}
+			}
+		},
+		{
+			"parameters": {
+				"operation": "scrape",
+				"url": "={{ $node[\"Config\"].json[\"testUrl\"] }}",
+				"scraper": "{\n  \"owner\": {\n    \"selector\": \"td:contains('Primary Owner')+td\",\n    \"type\": \"text\"\n  },\n  \"address\": {\n    \"selector\": \"td:contains('Location')+td\",\n    \"type\": \"text\"\n  },\n  \"assessment\": {\n    \"selector\": \"td:contains('Assessed Value')+td\",\n    \"type\": \"text\"\n  }\n}",
+				"options": {
+					"stealth": true,
+					"headless": false
+				}
+			},
+			"name": "Scrape Property Info",
+			"type": "n8n-nodes-browserless.browserless",
+			"typeVersion": 1,
+			"position": [900, 300],
+			"credentials": {
+				"browserlessApi": {
+					"id": "browserlessApi",
+					"name": "Browserless account"
+				}
+			}
+		},
+		{
+			"parameters": {
+				"operation": "screenshot",
+				"url": "={{ $node[\"Config\"].json[\"testUrl\"] }}",
+				"options": {
+					"stealth": true,
+					"headless": false,
+					"type": "png",
+					"quality": 80,
+					"fullPage": true
+				}
+			},
+			"name": "Take Screenshot",
+			"type": "n8n-nodes-browserless.browserless",
+			"typeVersion": 1,
+			"position": [900, 460],
+			"credentials": {
+				"browserlessApi": {
+					"id": "browserlessApi",
+					"name": "Browserless account"
+				}
+			}
+		},
+		{
+			"parameters": {
+				"operation": "execute",
+				"url": "={{ $node[\"Config\"].json[\"testUrl\"] }}",
+				"functionCode": "// This is the custom function that will be executed in the browser context\nasync function scrapePropertyInfo() {\n  // Navigate to the Ulster County IMO site\n  await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });\n  \n  // Check for the public access link and click it if found\n  try {\n    const publicAccessLink = await page.waitForSelector('a:contains(\"Click Here for Public Access\")', { timeout: 5000 });\n    await publicAccessLink.click();\n    await page.waitForNavigation({ waitUntil: 'networkidle2' });\n  } catch (e) {\n    console.log('Public access link not found, continuing...');\n  }\n  \n  // Check for and accept the agreement if present\n  try {\n    const agreeButton = await page.waitForSelector('input[value=\"I Agree\"]', { timeout: 5000 });\n    await agreeButton.click();\n    await page.waitForNavigation({ waitUntil: 'networkidle2' });\n  } catch (e) {\n    console.log('Agreement button not found, continuing...');\n  }\n  \n  // Take a screenshot showing the current state\n  const screenshot = await page.screenshot({ type: 'png', encoding: 'base64' });\n  \n  // Get the page title for verification\n  const title = await page.title();\n  \n  return {\n    success: true,\n    message: 'Successfully loaded Ulster County property page',\n    pageTitle: title,\n    screenshot: screenshot\n  };\n}\n\n// This function will be executed\nreturn await scrapePropertyInfo();",
+				"options": {
+					"stealth": true,
+					"headless": false
+				}
+			},
+			"name": "Execute Custom Script",
+			"type": "n8n-nodes-browserless.browserless",
+			"typeVersion": 1,
+			"position": [700, 460],
+			"credentials": {
+				"browserlessApi": {
+					"id": "browserlessApi",
+					"name": "Browserless account"
+				}
+			}
+		},
+		{
+			"parameters": {
+				"jsCode": "// Combine the results from the different browserless operations\nconst pageContent = $node[\"Get Page Content\"].json;\nconst scrapeResults = $node[\"Scrape Property Info\"].json;\nconst screenshotData = $node[\"Take Screenshot\"].json;\nconst customExecutionResults = $node[\"Execute Custom Script\"].json;\n\nreturn [\n  {\n    success: true,\n    message: \"Browserless test completed successfully\",\n    pageTitle: pageContent.title || customExecutionResults.pageTitle || \"Unknown\",\n    url: $node[\"Config\"].json.testUrl,\n    browserlessUrl: $node[\"Config\"].json.browserlessUrl,\n    propertyInfo: scrapeResults,\n    screenshotBase64: screenshotData.base64 || customExecutionResults.screenshot || \"\"\n  }\n];"
+			},
+			"name": "Process Results",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 1,
+			"position": [1100, 380]
+		}
+	],
+	"connections": {
+		"Start": {
+			"main": [
+				[
+					{
+						"node": "Config",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Config": {
+			"main": [
+				[
+					{
+						"node": "Get Page Content",
+						"type": "main",
+						"index": 0
+					},
+					{
+						"node": "Execute Custom Script",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Page Content": {
+			"main": [
+				[
+					{
+						"node": "Scrape Property Info",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Scrape Property Info": {
+			"main": [
+				[
+					{
+						"node": "Take Screenshot",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Take Screenshot": {
+			"main": [
+				[
+					{
+						"node": "Process Results",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Execute Custom Script": {
+			"main": [
+				[
+					{
+						"node": "Process Results",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"pinData": {},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"tags": []
+}

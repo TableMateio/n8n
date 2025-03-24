@@ -21,6 +21,10 @@
 						{
 							"name": "defaultSwis",
 							"value": "106"
+						},
+						{
+							"name": "browserlessUrl",
+							"value": "http://localhost:3000"
 						}
 					]
 				}
@@ -63,77 +67,85 @@
 		},
 		{
 			"parameters": {
-				"operation": "initBrowser",
-				"browserOptions": {
-					"headless": false,
-					"stealth": true,
-					"browserArgs": "--no-sandbox, --disable-setuid-sandbox, --disable-dev-shm-usage, --disable-accelerated-2d-canvas, --disable-gpu",
-					"viewport": {
-						"width": 1280,
-						"height": 800
-					}
-				}
+				"jsCode": "// Process each record\nconst batch = $input.item.json;\nconst defaultSwis = $node[\"Config\"].json.defaultSwis;\n\n// Return the batch - this will be processed by the following nodes\nreturn [\n  {\n    ...batch,\n    message: \"Ready to process records\"\n  }\n];"
 			},
-			"name": "Initialize Browser",
-			"type": "n8n-nodes-puppeteer.puppeteer",
+			"name": "Process Batch",
+			"type": "n8n-nodes-base.code",
 			"typeVersion": 1,
 			"position": [880, 300]
 		},
 		{
 			"parameters": {
-				"jsCode": "// Process each record\nconst batch = $input.item.json;\nconst browserInstance = batch.browserInstance;\nconst defaultSwis = $node[\"Config\"].json.defaultSwis;\n\n// Prepare to collect enriched records\nconst records = [];\n\nfor (const record of batch.records) {\n  // Skip records without SBL\n  if (!record.fields.SBL) {\n    records.push({\n      id: record.id,\n      fields: {\n        ...record.fields,\n        Property_Error: \"Missing SBL\"\n      }\n    });\n    continue;\n  }\n\n  // For now, just pass through and mark as processed\n  // In the real workflow this would do the actual property lookup\n  records.push({\n    id: record.id,\n    fields: {\n      ...record.fields,\n      Processing_Status: \"Ready for property lookup\"\n    }\n  });\n}\n\nreturn [\n  {\n    ...batch,\n    enrichedRecords: records,\n    message: \"Records prepared for property lookup\"\n  }\n];"
+				"keepOnlySet": true,
+				"values": {
+					"string": [
+						{
+							"name": "currentSBL",
+							"value": "={{ $node[\"Get Current Record\"].json[\"fields\"][\"SBL\"] }}"
+						},
+						{
+							"name": "currentId",
+							"value": "={{ $node[\"Get Current Record\"].json[\"id\"] }}"
+						}
+					]
+				},
+				"options": {}
 			},
-			"name": "Process Records",
-			"type": "n8n-nodes-base.code",
-			"typeVersion": 1,
-			"position": [1040, 300]
+			"name": "Set Record Info",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 2,
+			"position": [1200, 300]
 		},
 		{
 			"parameters": {
-				"operation": "goto",
-				"browserInstance": "={{ $node[\"Initialize Browser\"].json[\"browserInstance\"] }}",
+				"operation": "execute",
 				"url": "http://imo.ulstercountyny.gov/index.aspx",
+				"functionCode": "// Function to extract property information using the provided SBL\nasync function getPropertyInfo(sbl) {\n  // Navigate to the Ulster County property site\n  await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });\n  \n  // Log navigation status\n  console.log('Navigated to property site:', url);\n  \n  // Check for the public access link and click it if found\n  try {\n    const publicAccessLink = await page.waitForSelector('a:contains(\"Click Here for Public Access\")', { timeout: 5000 });\n    await publicAccessLink.click();\n    await page.waitForNavigation({ waitUntil: 'networkidle2' });\n    console.log('Clicked public access link');\n  } catch (e) {\n    console.log('Public access link not found, continuing...');\n  }\n  \n  // Check for and accept the agreement if present\n  try {\n    const agreeButton = await page.waitForSelector('input[value=\"I Agree\"]', { timeout: 5000 });\n    await agreeButton.click();\n    await page.waitForNavigation({ waitUntil: 'networkidle2' });\n    console.log('Clicked agreement button');\n  } catch (e) {\n    console.log('Agreement button not found, continuing...');\n  }\n  \n  // Parse the SBL into components\n  const sblParts = sbl.split('-');\n  if (sblParts.length !== 4) {\n    throw new Error(`Invalid SBL format: ${sbl}. Expected format: XXX-X-XX-XXX`);\n  }\n  \n  console.log('Processing SBL:', sbl, 'with parts:', sblParts);\n  \n  // Select Ulster municipality (106 = Kingston)\n  await page.select('select[name=\"selectmun\"]', '106');\n  console.log('Selected municipality');\n  \n  // Fill in SBL fields\n  await page.type('input[name=\"swis\"]', sblParts[0]);\n  await page.type('input[name=\"section\"]', sblParts[1]);\n  await page.type('input[name=\"block\"]', sblParts[2]);\n  await page.type('input[name=\"lot\"]', sblParts[3]);\n  console.log('Filled SBL fields');\n  \n  // Take screenshot of the search form\n  const searchFormScreenshot = await page.screenshot({ type: 'png', encoding: 'base64' });\n  \n  // Click search button\n  const searchButton = await page.waitForSelector('input[value=\"Search\"]');\n  await searchButton.click();\n  await page.waitForNavigation({ waitUntil: 'networkidle2' });\n  console.log('Clicked search button');\n  \n  // Check if we got results\n  const noResults = await page.evaluate(() => {\n    return document.body.innerText.includes('No records found');\n  });\n  \n  if (noResults) {\n    return {\n      success: false,\n      error: `No property found for SBL: ${sbl}`,\n      searchFormScreenshot: searchFormScreenshot\n    };\n  }\n  \n  // Click on the first result link\n  try {\n    const resultLink = await page.waitForSelector('a[href*=\"parcelinfopage\"]', { timeout: 10000 });\n    await resultLink.click();\n    await page.waitForNavigation({ waitUntil: 'networkidle2' });\n    console.log('Clicked on result link');\n  } catch (e) {\n    return {\n      success: false,\n      error: `Could not find property link for SBL: ${sbl}`,\n      searchFormScreenshot: searchFormScreenshot\n    };\n  }\n  \n  // Extract property information\n  const propertyInfo = await page.evaluate(() => {\n    const extractText = (label) => {\n      const tdElements = [...document.querySelectorAll('td')];\n      const labelCell = tdElements.find(el => el.innerText.includes(label));\n      if (labelCell && labelCell.nextElementSibling) {\n        return labelCell.nextElementSibling.innerText.trim();\n      }\n      return '';\n    };\n    \n    return {\n      owner: extractText('Primary Owner'),\n      address: extractText('Location'),\n      propertyClass: extractText('Property Class'),\n      assessedValue: extractText('Assessed Value'),\n      taxableValue: extractText('Taxable Value'),\n      acreage: extractText('Acres'),\n      yearBuilt: extractText('Year Built')\n    };\n  });\n  \n  // Take screenshot of results page\n  const resultsScreenshot = await page.screenshot({ type: 'png', encoding: 'base64' });\n  \n  return {\n    success: true,\n    propertyInfo: propertyInfo,\n    searchFormScreenshot: searchFormScreenshot,\n    resultsScreenshot: resultsScreenshot\n  };\n}\n\n// Get the SBL from input\nconst sbl = \"{{$node[\\\"Set Record Info\\\"].json[\\\"currentSBL\\\"]}}\";\n\n// Run the property info extraction\nreturn await getPropertyInfo(sbl);",
 				"options": {
-					"waitUntil": "networkidle2",
-					"timeout": 30000
+					"stealth": true,
+					"headless": false
 				}
 			},
-			"name": "Navigate to Ulster IMO",
-			"type": "n8n-nodes-puppeteer.puppeteer",
+			"name": "Extract Property Info",
+			"type": "n8n-nodes-browserless.browserless",
 			"typeVersion": 1,
-			"position": [1040, 160]
+			"position": [1360, 300],
+			"credentials": {
+				"browserlessApi": {
+					"id": "browserlessApi",
+					"name": "Browserless account"
+				}
+			}
 		},
 		{
 			"parameters": {
-				"operation": "evaluate",
-				"browserInstance": "={{ $node[\"Navigate to Ulster IMO\"].json[\"browserInstance\"] }}",
-				"payload": "document.title"
+				"dataType": "string",
+				"value1": "={{ $node[\"Extract Property Info\"].json[\"success\"] }}",
+				"rules": {
+					"rules": [
+						{
+							"value2": true
+						}
+					]
+				}
 			},
-			"name": "Check Page Loaded",
-			"type": "n8n-nodes-puppeteer.puppeteer",
+			"name": "Success or Error?",
+			"type": "n8n-nodes-base.switch",
 			"typeVersion": 1,
-			"position": [1200, 160]
-		},
-		{
-			"parameters": {
-				"jsCode": "// Get the input items\nconst batch = $input.item.json;\nconst records = batch.enrichedRecords;\n\n// Since we have one input item with all records\nconst output = [];\nfor (const record of records) {\n  output.push({\n    json: record\n  });\n}\n\n// Return as separate items\nreturn output;"
-			},
-			"name": "Split Records",
-			"type": "n8n-nodes-base.code",
-			"typeVersion": 1,
-			"position": [1200, 300]
+			"position": [1520, 300]
 		},
 		{
 			"parameters": {
 				"operation": "update",
 				"application": "appLrwpgvmWVG89FF",
 				"table": "tblvFgxDUo0OYjGaW",
-				"additionalOptions": {}
+				"id": "={{ $node[\"Set Record Info\"].json[\"currentId\"] }}",
+				"options": {}
 			},
-			"name": "Update Airtable",
+			"name": "Update Success",
 			"type": "n8n-nodes-base.airtable",
 			"typeVersion": 1,
-			"position": [1360, 300],
+			"position": [1720, 200],
 			"credentials": {
 				"airtableApi": {
 					"id": "13",
@@ -143,13 +155,41 @@
 		},
 		{
 			"parameters": {
-				"operation": "closeBrowser",
-				"browserInstance": "={{ $node[\"Check Page Loaded\"].json[\"browserInstance\"] }}"
+				"operation": "update",
+				"application": "appLrwpgvmWVG89FF",
+				"table": "tblvFgxDUo0OYjGaW",
+				"id": "={{ $node[\"Set Record Info\"].json[\"currentId\"] }}",
+				"options": {}
 			},
-			"name": "Close Browser",
-			"type": "n8n-nodes-puppeteer.puppeteer",
+			"name": "Update Error",
+			"type": "n8n-nodes-base.airtable",
 			"typeVersion": 1,
-			"position": [1520, 300]
+			"position": [1720, 400],
+			"credentials": {
+				"airtableApi": {
+					"id": "13",
+					"name": "Airtable account"
+				}
+			}
+		},
+		{
+			"parameters": {
+				"batchSize": 1,
+				"options": {}
+			},
+			"name": "Split Into Individual Records",
+			"type": "n8n-nodes-base.splitInBatches",
+			"typeVersion": 2,
+			"position": [880, 160]
+		},
+		{
+			"parameters": {
+				"jsCode": "// Get the first record from the batch\nreturn $input.item.json.records[0];"
+			},
+			"name": "Get Current Record",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 1,
+			"position": [1040, 160]
 		}
 	],
 	"connections": {
@@ -190,67 +230,80 @@
 			"main": [
 				[
 					{
-						"node": "Initialize Browser",
+						"node": "Process Batch",
 						"type": "main",
 						"index": 0
 					}
 				]
 			]
 		},
-		"Initialize Browser": {
+		"Process Batch": {
 			"main": [
 				[
 					{
-						"node": "Navigate to Ulster IMO",
-						"type": "main",
-						"index": 0
-					},
-					{
-						"node": "Process Records",
+						"node": "Split Into Individual Records",
 						"type": "main",
 						"index": 0
 					}
 				]
 			]
 		},
-		"Process Records": {
+		"Set Record Info": {
 			"main": [
 				[
 					{
-						"node": "Split Records",
+						"node": "Extract Property Info",
 						"type": "main",
 						"index": 0
 					}
 				]
 			]
 		},
-		"Navigate to Ulster IMO": {
+		"Extract Property Info": {
 			"main": [
 				[
 					{
-						"node": "Check Page Loaded",
+						"node": "Success or Error?",
 						"type": "main",
 						"index": 0
 					}
 				]
 			]
 		},
-		"Split Records": {
+		"Success or Error?": {
 			"main": [
 				[
 					{
-						"node": "Update Airtable",
+						"node": "Update Success",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Update Error",
 						"type": "main",
 						"index": 0
 					}
 				]
 			]
 		},
-		"Update Airtable": {
+		"Split Into Individual Records": {
 			"main": [
 				[
 					{
-						"node": "Close Browser",
+						"node": "Get Current Record",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Current Record": {
+			"main": [
+				[
+					{
+						"node": "Set Record Info",
 						"type": "main",
 						"index": 0
 					}
