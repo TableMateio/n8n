@@ -1,0 +1,78 @@
+{
+	"name": "LOCAL TEST: Puppeteer Visible Browser",
+	"nodes": [
+		{
+			"parameters": {},
+			"name": "Start",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [240, 300]
+		},
+		{
+			"parameters": {
+				"values": {
+					"string": [
+						{
+							"name": "browserWSEndpoint",
+							"value": "ws://localhost:3000"
+						},
+						{
+							"name": "testUrl",
+							"value": "http://imo.ulstercountyny.gov/index.aspx"
+						}
+					]
+				},
+				"options": {}
+			},
+			"name": "Config",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 2,
+			"position": [460, 300]
+		},
+		{
+			"parameters": {
+				"operation": "runCustomScript",
+				"url": "={{ $node[\"Config\"].json.testUrl }}",
+				"functionCode": "// Script to test browser visualization\nconsole.log('Using browser endpoint:', $node[\"Config\"].json.browserWSEndpoint);\nconsole.log('Navigating to:', $node[\"Config\"].json.testUrl);\n\n// Slow down operations for visibility\nasync function slowDown(ms = 1000) {\n  console.log(`Waiting ${ms}ms for visibility...`);\n  return new Promise(resolve => setTimeout(resolve, ms));\n}\n\n// Initial navigation\nawait $page.goto($node[\"Config\"].json.testUrl, { waitUntil: 'networkidle0' });\nawait slowDown(2000);\n\n// Click the Public Access button if it exists\ntry {\n  console.log('Looking for Public Access button...');\n  const publicAccessButton = await $page.waitForSelector('a:has-text(\"Click Here for Public Access\")', { timeout: 5000 });\n  if (publicAccessButton) {\n    console.log('Clicking Public Access button...');\n    await publicAccessButton.click();\n    await $page.waitForNavigation({ waitUntil: 'networkidle0' });\n    await slowDown(2000);\n  }\n} catch (error) {\n  console.log('No Public Access button found or error clicking it:', error.message);\n}\n\n// Check if agreement overlay appears and click \"agree\" if it does\ntry {\n  console.log('Looking for agreement button...');\n  const agreeButton = await $page.waitForSelector('input[value=\"I Agree\"]', { timeout: 5000 });\n  if (agreeButton) {\n    console.log('Clicking agree button...');\n    await agreeButton.click();\n    await $page.waitForNavigation({ waitUntil: 'networkidle0' });\n    await slowDown(2000);\n  }\n} catch (error) {\n  console.log('No agreement dialog found or error clicking it:', error.message);\n}\n\n// Wait for the search form to load\ntry {\n  console.log('Waiting for search form...');\n  await $page.waitForSelector('select[name=\"selectmun\"]', { timeout: 10000 });\n  console.log('Search form found!');\n  await slowDown(1000);\n  \n  // Test filling out form with a sample SBL\n  const sbl = '106-1-10-100'; // Example SBL\n  let sblParts = sbl.split('-');\n  \n  // Select Ulster municipality (106 = Ulster)\n  console.log('Selecting municipality...');\n  await $page.select('select[name=\"selectmun\"]', '106');\n  await slowDown(1000);\n  \n  // Fill in SBL parts\n  console.log('Filling in SBL fields...');\n  await $page.type('input[name=\"swis\"]', sblParts[0]);\n  await slowDown(500);\n  await $page.type('input[name=\"section\"]', sblParts[1]);\n  await slowDown(500);\n  await $page.type('input[name=\"block\"]', sblParts[2]);\n  await slowDown(500);\n  await $page.type('input[name=\"lot\"]', sblParts[3]);\n  await slowDown(1000);\n  \n  // Click search button\n  console.log('Clicking search button...');\n  const searchButton = await $page.waitForSelector('input[value=\"Search\"]');\n  await searchButton.click();\n  \n  // Wait for results\n  await $page.waitForNavigation({ waitUntil: 'networkidle0' });\n  await slowDown(2000);\n  \n  // Take a screenshot\n  console.log('Taking screenshot...');\n  const screenshot = await $page.screenshot({ type: 'png', encoding: 'base64' });\n  \n  return [\n    {\n      success: true,\n      message: 'Browser test completed successfully',\n      binary: {\n        screenshot: {\n          data: screenshot,\n          mimeType: 'image/png',\n          fileName: 'ulster_county_test.png'\n        }\n      }\n    }\n  ];\n  \n} catch (error) {\n  console.log('Error during test:', error.message);\n  // Take a screenshot of the error state\n  const errorScreenshot = await $page.screenshot({ type: 'png', encoding: 'base64' });\n  \n  return [\n    {\n      success: false,\n      error: error.message,\n      binary: {\n        errorScreenshot: {\n          data: errorScreenshot,\n          mimeType: 'image/png',\n          fileName: 'error_screenshot.png'\n        }\n      }\n    }\n  ];\n}",
+				"options": {
+					"browserWSEndpoint": "={{ $node[\"Config\"].json.browserWSEndpoint }}",
+					"timeout": 60000,
+					"waitUntil": "networkidle0"
+				}
+			},
+			"name": "Browser Test",
+			"type": "n8n-nodes-puppeteer.puppeteer",
+			"typeVersion": 1,
+			"position": [660, 300]
+		}
+	],
+	"connections": {
+		"Start": {
+			"main": [
+				[
+					{
+						"node": "Config",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Config": {
+			"main": [
+				[
+					{
+						"node": "Browser Test",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"pinData": {},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"tags": []
+}
