@@ -1,0 +1,8 @@
+ WARN  Unsupported engine: wanted: {"node":">=20.15"} (current: {"node":"v18.19.0","pnpm":"10.2.1"})
+
+> n8n-monorepo@1.84.0 n8n /Users/scottbergman/Dropbox/TaxSurplus/Technology/n8n
+> node scripts/run.js
+
+[34m╔═════════════════════════╗[0m
+[34m║    [36mN8N Environment[34m    ║[0m
+[34m╚═════════════════════════╝[0m

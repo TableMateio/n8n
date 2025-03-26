@@ -1,0 +1,327 @@
+{
+	"name": "ROUTER: Auctions",
+	"nodes": [
+		{
+			"name": "Schedule Trigger",
+			"type": "n8n-nodes-base.scheduleTrigger",
+			"typeVersion": 1,
+			"position": [250, 300],
+			"parameters": {
+				"triggerTimes": {
+					"item": [
+						{
+							"hour": 7,
+							"minute": 0
+						}
+					]
+				}
+			},
+			"id": "schedule_trigger",
+			"notes": "Triggers daily at 7:00 AM to check for auctions with Surplus List data ready for processing."
+		},
+		{
+			"name": "Get Auctions with Surplus List",
+			"type": "n8n-nodes-base.airtable",
+			"typeVersion": 2,
+			"position": [450, 300],
+			"parameters": {
+				"resource": "record",
+				"operation": "search",
+				"application": "airtable",
+				"base": {
+					"__rl": true,
+					"value": "appZMhZh6hDrzAnuV",
+					"mode": "list",
+					"cachedResultName": "Tax Surplus Test",
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
+				},
+				"table": {
+					"__rl": true,
+					"value": "tblteK8SeHqZ8xQxV",
+					"mode": "list",
+					"cachedResultName": "Auctions",
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblteK8SeHqZ8xQxV"
+				},
+				"filterByFormula": "AND(NOT({Surplus List}=''),{Foreclosures}='')",
+				"options": {
+					"downloadFields": ["Surplus List"]
+				}
+			},
+			"id": "airtable_query",
+			"credentials": {
+				"airtableTokenApi": {
+					"id": "KqeYloYYVZeNChgU",
+					"name": "Airtable"
+				}
+			},
+			"notes": "Queries Airtable for auctions that have a Surplus List but don't have any Foreclosures created yet. Downloads the Surplus List attachments."
+		},
+		{
+			"name": "Extract PDF Text",
+			"type": "n8n-nodes-base.extractFromFile",
+			"typeVersion": 1,
+			"position": [650, 300],
+			"parameters": {
+				"operation": "pdf",
+				"binaryPropertyName": "Surplus List_0",
+				"options": {}
+			},
+			"id": "extract_pdf",
+			"notes": "Extracts the text content directly from the PDF attachment using the binary field 'Surplus List_0'."
+		},
+		{
+			"name": "Split PDF by Pages",
+			"type": "n8n-nodes-base.function",
+			"typeVersion": 1,
+			"position": [800, 300],
+			"parameters": {
+				"functionCode": "// Get the PDF text content and record info\nconst pdfText = $input.item.json.text || '';\nconst recordId = $input.item.json.id || '';\n\n// Safely access fields - handle case where fields object might be undefined\nconst fields = $input.item.json.fields || {};\nconst auctionTitle = fields[\"Auction\"] || \"Unknown Auction\";\n\n// Log basic info for debugging\nconsole.log(\"Processing PDF content for auction ID:\", recordId);\nconsole.log(\"Auction Title:\", auctionTitle);\nconsole.log(\"PDF extracted text length:\", pdfText.length);\n\n// See if we have metadata about the PDF pages\nconst numPages = $input.item.json.numpages || 1;\nconsole.log(\"PDF has\", numPages, \"pages\");\n\n// Split the text by page markers to get individual pages\nlet pages = [];\n\n// Try to split by common page markers\nif (pdfText.includes('Page |')) {\n  // Split by 'Page |' marker which appears in headers/footers\n  pages = pdfText.split(/Page \\|/).filter(page => page.trim().length > 0);\n} else if (pdfText.includes('Page:')) {\n  // Alternative page marker\n  pages = pdfText.split(/Page:/).filter(page => page.trim().length > 0);\n} else {\n  // If no clear page markers, create chunks by estimated page size\n  // Typically PDFs have 3000-4000 characters per page\n  const chunkSize = 3500;\n  for (let i = 0; i < pdfText.length; i += chunkSize) {\n    pages.push(pdfText.substring(i, i + chunkSize));\n  }\n}\n\n// If we ended up with no pages, treat the whole PDF as one page\nif (pages.length === 0) {\n  pages = [pdfText];\n}\n\n// Create one item per page for processing\nreturn pages.map((pageText, index) => {\n  return {\n    json: {\n      pageIndex: index + 1,\n      pageCount: pages.length,\n      auctionId: recordId,\n      auctionTitle: auctionTitle,\n      pageText: pageText\n    }\n  };\n});"
+			},
+			"id": "split_by_pages",
+			"notes": "Splits the PDF text into individual pages for separate processing. This helps manage the input size for the OpenAI API and improves extraction accuracy."
+		},
+		{
+			"name": "Process PDF with OpenAI",
+			"type": "n8n-nodes-base.openAi",
+			"typeVersion": 1,
+			"position": [950, 300],
+			"parameters": {
+				"authentication": "apiKey",
+				"resource": "chat",
+				"prompt": {
+					"messages": [
+						{
+							"role": "system",
+							"content": "You are a specialized extraction agent for tax surplus auction PDFs. Your task is to analyze the provided PDF text content and extract structured data about foreclosure properties.\n\n## INPUT FORMAT\nYou will receive text extracted from a PDF page containing tabular data about tax foreclosure properties. The data may be formatted differently depending on the county, but generally includes:\n- Parcel numbers\n- Property locations/addresses\n- SBL numbers (formatted like 123.456-7890-123.456-7890)\n- Town/municipality names\n- Sale prices\n- Tax amounts\n- Surplus amounts\n\n## OUTPUT FORMAT\nYou must return ONLY a valid JSON array containing objects with the following structure:\n\n{\n  \"foreclosures\": [\n    {\n      \"Number\": \"string\", // Parcel number (numeric ID)\n      \"SBL\": \"string\", // SBL number in standard format\n      \"Location\": \"string\", // Property address/location\n      \"Town\": \"string\", // Town/municipality name (without \"Town of\" prefix)\n      \"Sale_Price\": number, // Numeric value without $ or commas\n      \"Tax\": number, // Numeric value without $ or commas \n      \"Surplus\": number, // Numeric value without $ or commas\n      \"Index\": \"string\", // Index/deed book number if available\n      \"Owner\": \"string\" // Property owner name if available\n    },\n    // Additional foreclosure objects\n  ]\n}\n\n## EXTRACTION RULES\n\n1. IDENTIFICATION:\n   - Look for tabular data with headers like PARCEL, SBL#, LOCATION, TOWN, SALE PRICE, etc.\n   - Each row typically represents one foreclosure property\n   - Rows often start with a numeric Parcel ID\n\n2. FIELD FORMATTING:\n   - Number: Extract just the numeric ID without leading zeros\n   - SBL: Preserve the full format (e.g., 123.456-7890-123.456-7890)\n   - Location: Properly capitalize addresses (e.g., \"123 Main St\" not \"123 MAIN ST\")\n   - Town: Remove \"Town of\" prefix and properly capitalize (e.g., \"Ulster\" not \"TOWN OF ULSTER\")\n   - Sale_Price/Tax/Surplus: Convert to numeric values (remove $ and commas)\n   - Index: Format as provided (often appears as a numeric ID or formatted like \"2022-1234\")\n   - Owner: Properly capitalize names (e.g., \"John Smith\" not \"JOHN SMITH\")\n\n3. DATA VALIDATION:\n   - Ensure numeric fields contain only numbers\n   - Verify SBL numbers match expected pattern\n   - Ensure all required fields are present, even if empty (\"\")\n   - Financial values must be positive numbers\n\n4. HANDLING VARIATIONS:\n   - Some counties use different column names or formats\n   - Data may span multiple lines for a single property\n   - Columns may be in different orders in different PDFs\n   - Page headers/footers should be ignored\n\n## EXAMPLE IDENTIFICATION\nFor text containing rows like:\n\"123 ULSTER 123 MAIN ST 123.456-7890-123.456-7890 $10,000.00 $5,000.00 $5,000.00\"\n\nYou should recognize:\n- Number: \"123\"\n- Town: \"Ulster\" \n- Location: \"123 Main St\"\n- SBL: \"123.456-7890-123.456-7890\"\n- Sale_Price: 10000\n- Tax: 5000\n- Surplus: 5000\n\nReturn ONLY the JSON array with no additional text, commentary or explanations."
+						},
+						{
+							"role": "user",
+							"content": "={{ \"Here is a page from a tax surplus auction PDF (page \" + $json.pageIndex + \" of \" + $json.pageCount + \"). Extract all the foreclosure property data from this text and return it as JSON following the specified format:\\n\\n\" + $json.pageText }}"
+						}
+					]
+				},
+				"options": {
+					"model": "gpt-4-turbo",
+					"temperature": 0.1,
+					"maxTokens": 8000,
+					"responseFormat": "json_object"
+				}
+			},
+			"id": "openai_process",
+			"credentials": {
+				"openAiApi": {
+					"id": "2jKSIPMC1yrrW9Cx",
+					"name": "OpenAI account"
+				}
+			},
+			"notes": "Sends each PDF page to OpenAI for intelligent parsing. Using GPT-4 with a low temperature for consistent outputs and JSON response format for reliable structure."
+		},
+		{
+			"name": "Combine Results",
+			"type": "n8n-nodes-base.function",
+			"typeVersion": 1,
+			"position": [1100, 300],
+			"parameters": {
+				"functionCode": "// This is a reducer function that will combine all the results from the multiple OpenAI API calls\n// into a single item with all foreclosures\n\n// Initialize an array to store all foreclosures\nlet allForeclosures = [];\n\n// Store the auction ID and title from the first item\nconst auctionId = $input.item(0).json.auctionId || '';\nconst auctionTitle = $input.item(0).json.auctionTitle || '';\n\n// Process each item (page result from OpenAI)\nfor (const item of $input.all()) {\n  try {\n    // Parse the OpenAI response which should be a JSON string or object\n    const aiResponse = item.json.response || item.json.foreclosures || item.json;\n    \n    // Check if we have a JSON string or already parsed object\n    let parsedResponse;\n    if (typeof aiResponse === 'string') {\n      try {\n        parsedResponse = JSON.parse(aiResponse);\n      } catch (e) {\n        console.log('Failed to parse JSON string:', e.message);\n        continue; // Skip this item if we can't parse it\n      }\n    } else {\n      parsedResponse = aiResponse;\n    }\n    \n    // Extract the foreclosures array\n    const foreclosures = parsedResponse.foreclosures || [];\n    \n    if (Array.isArray(foreclosures)) {\n      // For each foreclosure, add the auction relationship before adding to our collection\n      const processedForeclosures = foreclosures.map(f => {\n        // Convert fields to match Airtable expectations\n        return {\n          Number: f.Number || '',\n          SBL: f.SBL || '',\n          Location: f.Location || '',\n          Town: f.Town || '',\n          \"Sale Price\": typeof f.Sale_Price === 'number' ? f.Sale_Price : \n                       (typeof f.Sale_Price === 'string' ? parseFloat(f.Sale_Price) || 0 : 0),\n          Tax: typeof f.Tax === 'number' ? f.Tax : \n               (typeof f.Tax === 'string' ? parseFloat(f.Tax) || 0 : 0),\n          Surplus: typeof f.Surplus === 'number' ? f.Surplus : \n                   (typeof f.Surplus === 'string' ? parseFloat(f.Surplus) || 0 : 0),\n          Auction: [auctionId],  // Link to the auction record\n          Index: f.Index || '',\n          Owner: f.Owner || ''\n        };\n      });\n      \n      // Add to our collection\n      allForeclosures = allForeclosures.concat(processedForeclosures);\n    }\n  } catch (error) {\n    console.log('Error processing page result:', error.message);\n  }\n}\n\n// Filter out any potential duplicates by using Number as the identifier\nconst uniqueForeclosures = allForeclosures.filter((foreclosure, index, self) =>\n  index === self.findIndex((f) => (\n    f.Number === foreclosure.Number && f.SBL === foreclosure.SBL\n  ))\n);\n\n// Return a single item with all the foreclosures\nreturn {\n  json: {\n    auctionId,\n    auctionTitle,\n    foreclosuresCount: uniqueForeclosures.length,\n    notes: `Successfully extracted ${uniqueForeclosures.length} foreclosure records using AI from the PDF.`,\n    foreclosures: uniqueForeclosures\n  }\n};"
+			},
+			"id": "combine_results",
+			"notes": "Combines foreclosure data from all processed PDF pages, removes duplicates, and prepares the data for Airtable record creation."
+		},
+		{
+			"name": "Create Foreclosure Records",
+			"type": "n8n-nodes-base.airtable",
+			"typeVersion": 2,
+			"position": [1250, 300],
+			"parameters": {
+				"resource": "record",
+				"operation": "create",
+				"application": "airtable",
+				"base": {
+					"__rl": true,
+					"value": "appZMhZh6hDrzAnuV",
+					"mode": "list",
+					"cachedResultName": "Tax Surplus Test",
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
+				},
+				"table": {
+					"__rl": true,
+					"value": "tblteK8SeHqZ8xQxV",
+					"mode": "list",
+					"cachedResultName": "Foreclosures",
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblteK8SeHqZ8xQxV"
+				},
+				"options": {}
+			},
+			"id": "create_foreclosures",
+			"credentials": {
+				"airtableTokenApi": {
+					"id": "KqeYloYYVZeNChgU",
+					"name": "Airtable"
+				}
+			},
+			"notes": "Creates Foreclosure records in Airtable from the AI-parsed PDF data, linking each to the auction it came from."
+		},
+		{
+			"name": "Update Auction",
+			"type": "n8n-nodes-base.airtable",
+			"typeVersion": 2,
+			"position": [1400, 300],
+			"parameters": {
+				"resource": "record",
+				"operation": "update",
+				"application": "airtable",
+				"base": {
+					"__rl": true,
+					"value": "appZMhZh6hDrzAnuV",
+					"mode": "list",
+					"cachedResultName": "Tax Surplus Test",
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV"
+				},
+				"table": {
+					"__rl": true,
+					"value": "tblteK8SeHqZ8xQxV",
+					"mode": "list",
+					"cachedResultName": "Auctions",
+					"cachedResultUrl": "https://airtable.com/appZMhZh6hDrzAnuV/tblteK8SeHqZ8xQxV"
+				},
+				"id": "={{ $json.auctionId }}",
+				"fields": {
+					"values": [
+						{
+							"name": "Processing Status",
+							"value": "Processed"
+						},
+						{
+							"name": "Processing Notes",
+							"value": "={{ $json.notes }}"
+						},
+						{
+							"name": "Foreclosures Updated",
+							"value": true
+						}
+					]
+				},
+				"options": {}
+			},
+			"id": "update_auction",
+			"credentials": {
+				"airtableTokenApi": {
+					"id": "KqeYloYYVZeNChgU",
+					"name": "Airtable"
+				}
+			},
+			"notes": "Updates the Auction record to indicate processing is complete, sets Foreclosures Updated to true, and adds a note with the count of created records."
+		},
+		{
+			"name": "Workflow Complete",
+			"type": "n8n-nodes-base.noOp",
+			"typeVersion": 1,
+			"position": [1550, 300],
+			"parameters": {
+				"description": "End of the workflow. Foreclosure records have been created in Airtable using AI-powered extraction."
+			},
+			"id": "no_op",
+			"notes": "Workflow complete. Foreclosure records have been created in Airtable and linked to the auction record using OpenAI for intelligent data extraction."
+		}
+	],
+	"pinData": {},
+	"connections": {
+		"Schedule Trigger": {
+			"main": [
+				[
+					{
+						"node": "Get Auctions with Surplus List",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Auctions with Surplus List": {
+			"main": [
+				[
+					{
+						"node": "Extract PDF Text",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Extract PDF Text": {
+			"main": [
+				[
+					{
+						"node": "Split PDF by Pages",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Split PDF by Pages": {
+			"main": [
+				[
+					{
+						"node": "Process PDF with OpenAI",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Process PDF with OpenAI": {
+			"main": [
+				[
+					{
+						"node": "Combine Results",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Combine Results": {
+			"main": [
+				[
+					{
+						"node": "Create Foreclosure Records",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Create Foreclosure Records": {
+			"main": [
+				[
+					{
+						"node": "Update Auction",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Update Auction": {
+			"main": [
+				[
+					{
+						"node": "Workflow Complete",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"active": false,
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"id": "TYI9aehJQl3PGEcH",
+	"meta": {
+		"instanceId": "4dba8cd386ae3944b2fc7eaa8a1fd4bf66504415151768c62f3b476b5123f76d"
+	},
+	"tags": []
+}
