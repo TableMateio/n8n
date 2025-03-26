@@ -286,7 +286,7 @@ const versionDescription: INodeTypeDescription = {
 			},
 			default: 0,
 			required: true,
-			description: 'E.g. enter “10” then select “Days” if you want to add 10 days to Date Value.',
+			description: 'E.g. enter "10" then select "Days" if you want to add 10 days to Date Value.',
 		},
 		{
 			displayName: 'Time Unit',
@@ -431,7 +431,7 @@ export class DateTimeV1 implements INodeType {
 					let newDate;
 
 					if ((currentDate as unknown as IDataObject) instanceof LuxonDateTime) {
-						currentDate = (currentDate as unknown as LuxonDateTime).toISO();
+						currentDate = (currentDate as unknown as LuxonDateTime).toISO() ?? '';
 					}
 
 					// Check if the input is a number
