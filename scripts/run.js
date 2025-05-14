@@ -15,7 +15,8 @@
 
 const { execSync, spawn } = require('child_process');
 const readline = require('readline');
-const { setTimeout } = require('timers/promises');
+// Use global setTimeout instead of the Promise-based version
+// const { setTimeout } = require('timers/promises');
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
@@ -56,6 +57,8 @@ const sslCert = path.join(projectRoot, 'secure-certs', 'localhost.crt');
 // Check command line args for --http flag
 const useHttp = process.argv.includes('--http');
 const showHelp = process.argv.includes('--help') || process.argv.includes('-h');
+// Check for the new -c flag to prevent opening browser
+const dontOpenBrowser = process.argv.includes('-c');
 
 // Environment configurations - all with HTTPS by default
 const environments = {
@@ -147,6 +150,7 @@ ${colors.green}ENVIRONMENTS:${colors.reset}`);
 ${colors.green}OPTIONS:${colors.reset}
   ${colors.cyan}--http${colors.reset}      Use HTTP instead of HTTPS (not recommended)
   ${colors.cyan}--help, -h${colors.reset}  Show this help message
+  ${colors.cyan}-c${colors.reset}          Prevent the browser from opening automatically
 
 ${colors.green}EXAMPLES:${colors.reset}
   ${colors.gray}# Interactive mode (select environment)${colors.reset}
@@ -282,7 +286,7 @@ async function waitForServer(protocol, port, maxAttempts = 15) {
 				return false;
 			}
 			// Shorter wait between attempts
-			await setTimeout(500);
+			setTimeout(500);
 		}
 	}
 
@@ -542,10 +546,22 @@ function runN8N(envKey) {
 					{ encoding: 'utf8' },
 				);
 
-				// Open this HTML file in Safari instead of the direct URL
-				const fileUrl = `file://${authCookieScript}`;
-				console.log(`${colors.yellow}Opening auth helper page first: ${fileUrl}${colors.reset}`);
-				execSync(`open -a Safari "${fileUrl}"`, { stdio: 'inherit' });
+				// Open this HTML file in Safari instead of the direct URL, only if -c flag is NOT set
+				if (!dontOpenBrowser) {
+					const fileUrl = `file://${authCookieScript}`;
+					console.log(`${colors.yellow}Opening auth helper page first: ${fileUrl}${colors.reset}`);
+					try {
+						execSync(`open -a Safari "${fileUrl}"`, { stdio: 'inherit' });
+					} catch (openErr) {
+						console.log(
+							`${colors.red}Error opening auth helper page: ${openErr.message}${colors.reset}`,
+						);
+					}
+				} else {
+					console.log(
+						`${colors.yellow}Skipping automatic browser open due to -c flag.${colors.reset}`,
+					);
+				}
 
 				// Clean up the temp file after a delay
 				setTimeout(() => {
@@ -583,81 +599,85 @@ function runN8N(envKey) {
 		childProcess.kill('SIGTERM');
 	});
 
-	// Try to open browser after giving n8n some time to start
-	setTimeout(() => {
-		try {
-			// Get the URL directly from detected URLs or construct it
-			const url =
-				n8nServerUrl ||
-				(detectedUrls.length > 0
-					? detectedUrls[0]
-					: `${envConfig.protocol}://localhost:${envConfig.port}`);
-
-			console.log(
-				`\n${colors.bright}${colors.green}==================================${colors.reset}`,
-			);
-			console.log(`${colors.bright}${colors.green}🌐 BROWSER OPENING SECTION 🌐${colors.reset}`);
-			console.log(
-				`${colors.bright}${colors.green}==================================${colors.reset}`,
-			);
-
-			console.log(`\n${colors.cyan}URL detected: ${url}${colors.reset}`);
-
-			// Use the dedicated Safari opener script
-			const openerScript = path.join(projectRoot, 'scripts', 'open_safari.sh');
-
-			// Ensure the script exists
-			if (!fs.existsSync(openerScript)) {
-				console.log(
-					`${colors.red}Safari opener script not found at: ${openerScript}${colors.reset}`,
-				);
-				console.log(`${colors.yellow}Please open this URL manually:${colors.reset}`);
-				console.log(`${colors.bright}${url}${colors.reset}\n`);
-				return;
-			}
-
-			console.log(`${colors.yellow}Executing dedicated Safari opener script...${colors.reset}`);
-
+	// Try to open browser after giving n8n some time to start, unless -c flag is set
+	if (!dontOpenBrowser) {
+		setTimeout(() => {
 			try {
-				// Run with the detected URL as argument
-				execSync(`${openerScript} "${url}"`, { stdio: 'inherit' });
-				console.log(`${colors.green}✅ Browser opening script completed${colors.reset}`);
-			} catch (err) {
-				console.log(`${colors.red}Error running Safari opener: ${err.message}${colors.reset}`);
+				// Get the URL directly from detected URLs or construct it
+				const url =
+					n8nServerUrl ||
+					(detectedUrls.length > 0
+						? detectedUrls[0]
+						: `${envConfig.protocol}://localhost:${envConfig.port}`);
 
-				// Last resort - try the direct command that works in terminal
 				console.log(
-					`${colors.yellow}Trying direct terminal command as last resort...${colors.reset}`,
+					`\n${colors.bright}${colors.green}==================================${colors.reset}`,
 				);
-				try {
-					execSync(`open -a Safari "${url}"`, { stdio: 'inherit' });
-					console.log(`${colors.green}✅ Direct terminal command succeeded${colors.reset}`);
-				} catch (directErr) {
+				console.log(`${colors.bright}${colors.green}🌐 BROWSER OPENING SECTION 🌐${colors.reset}`);
+				console.log(
+					`${colors.bright}${colors.green}==================================${colors.reset}`,
+				);
+
+				console.log(`\n${colors.cyan}URL detected: ${url}${colors.reset}`);
+
+				// Use the dedicated Safari opener script
+				const openerScript = path.join(projectRoot, 'scripts', 'open_safari.sh');
+
+				// Ensure the script exists
+				if (!fs.existsSync(openerScript)) {
 					console.log(
-						`${colors.red}Direct command also failed: ${directErr.message}${colors.reset}`,
+						`${colors.red}Safari opener script not found at: ${openerScript}${colors.reset}`,
 					);
+					console.log(`${colors.yellow}Please open this URL manually:${colors.reset}`);
+					console.log(`${colors.bright}${url}${colors.reset}\n`);
+					return;
 				}
+
+				console.log(`${colors.yellow}Executing dedicated Safari opener script...${colors.reset}`);
+
+				try {
+					// Run with the detected URL as argument
+					execSync(`${openerScript} "${url}"`, { stdio: 'inherit' });
+					console.log(`${colors.green}✅ Browser opening script completed${colors.reset}`);
+				} catch (err) {
+					console.log(`${colors.red}Error running Safari opener: ${err.message}${colors.reset}`);
+
+					// Last resort - try the direct command that works in terminal
+					console.log(
+						`${colors.yellow}Trying direct terminal command as last resort...${colors.reset}`,
+					);
+					try {
+						execSync(`open -a Safari "${url}"`, { stdio: 'inherit' });
+						console.log(`${colors.green}✅ Direct terminal command succeeded${colors.reset}`);
+					} catch (directErr) {
+						console.log(
+							`${colors.red}Direct command also failed: ${directErr.message}${colors.reset}`,
+						);
+					}
+				}
+
+				// Always show manual URL
+				console.log(
+					`\n${colors.bright}${colors.cyan}===============================${colors.reset}`,
+				);
+				console.log(`${colors.bright}${colors.cyan}MANUAL URL OPENING INSTRUCTIONS${colors.reset}`);
+				console.log(`${colors.bright}${colors.cyan}===============================${colors.reset}`);
+				console.log(
+					`\n${colors.yellow}If the browser didn't open automatically, copy and paste this URL:${colors.reset}`,
+				);
+				console.log(`${colors.bright}${url}${colors.reset}\n`);
+
+				// Show URL info
+				console.log(`Editor is now accessible via:\n${colors.bright}${url}${colors.reset}`);
+			} catch (error) {
+				console.log(`${colors.red}Error in browser opener: ${error.message}${colors.reset}`);
+				console.log(`${colors.yellow}Please open this URL manually:${colors.reset}`);
+				console.log(
+					`${colors.bright}${envConfig.protocol}://localhost:${envConfig.port}${colors.reset}`,
+				);
 			}
-
-			// Always show manual URL
-			console.log(`\n${colors.bright}${colors.cyan}===============================${colors.reset}`);
-			console.log(`${colors.bright}${colors.cyan}MANUAL URL OPENING INSTRUCTIONS${colors.reset}`);
-			console.log(`${colors.bright}${colors.cyan}===============================${colors.reset}`);
-			console.log(
-				`\n${colors.yellow}If the browser didn't open automatically, copy and paste this URL:${colors.reset}`,
-			);
-			console.log(`${colors.bright}${url}${colors.reset}\n`);
-
-			// Show URL info
-			console.log(`Editor is now accessible via:\n${colors.bright}${url}${colors.reset}`);
-		} catch (error) {
-			console.log(`${colors.red}Error in browser opener: ${error.message}${colors.reset}`);
-			console.log(`${colors.yellow}Please open this URL manually:${colors.reset}`);
-			console.log(
-				`${colors.bright}${envConfig.protocol}://localhost:${envConfig.port}${colors.reset}`,
-			);
-		}
-	}, 5000);
+		}, 5000);
+	}
 }
 
 // Main control flow - this was missing!

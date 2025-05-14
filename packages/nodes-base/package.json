@@ -891,6 +891,7 @@
     "js-nacl": "1.4.0",
     "jsonwebtoken": "9.0.2",
     "kafkajs": "1.16.0",
+    "langchain": "0.3.11",
     "ldapts": "4.2.6",
     "lodash": "catalog:",
     "lossless-json": "1.0.5",
