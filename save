@@ -1,0 +1,11 @@
+#!/bin/bash
+# Get computer name for commit message
+COMPUTER_NAME=$(scutil --get ComputerName)
+# Sync database and important files from ~/.n8n to this folder
+rsync -av ~/.n8n/database.sqlite ~/.n8n/.env ~/.n8n/config ./
+# Add all changes
+git add .
+git commit -m "Update from $COMPUTER_NAME at $(date)"
+git push
+echo "✅ Changes saved successfully!"
+
