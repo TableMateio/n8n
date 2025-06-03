@@ -1,0 +1,72 @@
+#!/bin/bash
+
+# Check which database file exists and is in use
+OUTER_DB=~/.n8n/database.sqlite
+INNER_DB=~/.n8n/.n8n/database.sqlite
+OUTER_SIZE=0
+INNER_SIZE=0
+
+if [ -f "$OUTER_DB" ]; then
+  OUTER_SIZE=$(stat -f "%z" "$OUTER_DB")
+  OUTER_MODIFIED_TIME=$(stat -f "%m" "$OUTER_DB" 2>/dev/null || echo "0")
+fi
+
+if [ -f "$INNER_DB" ]; then
+  INNER_SIZE=$(stat -f "%z" "$INNER_DB")
+  INNER_MODIFIED_TIME=$(stat -f "%m" "$INNER_DB" 2>/dev/null || echo "0")
+fi
+
+echo "Outer database size: $(numfmt --to=iec-i --suffix=B $OUTER_SIZE) (Last modified: $(date -r $OUTER_MODIFIED_TIME))"
+echo "Inner database size: $(numfmt --to=iec-i --suffix=B $INNER_SIZE) (Last modified: $(date -r $INNER_MODIFIED_TIME))"
+
+# Determine which directory to use based on which one has the larger DB
+if [ $INNER_SIZE -gt $OUTER_SIZE ]; then
+  echo "Using inner directory (larger database)"
+  TARGET_DB="$INNER_DB"
+  TARGET_CONFIG=~/.n8n/.n8n/config
+  LOCAL_MODIFIED_TIME=$INNER_MODIFIED_TIME
+else
+  echo "Using outer directory (larger database or only available)"
+  TARGET_DB="$OUTER_DB"
+  TARGET_CONFIG=~/.n8n/config
+  LOCAL_MODIFIED_TIME=$OUTER_MODIFIED_TIME
+fi
+
+# Always use the outer .env
+TARGET_ENV=~/.n8n/.env
+
+# Check if the local database is newer than the repository one
+REPO_MODIFIED_TIME=$(stat -f "%m" ./database.sqlite 2>/dev/null || echo "0")
+
+if [ "$LOCAL_MODIFIED_TIME" -gt "$REPO_MODIFIED_TIME" ]; then
+  echo "⚠️ WARNING: Your local database is newer than the one in the repository"
+  echo "Local database modified: $(date -r $LOCAL_MODIFIED_TIME)"
+  echo "Repo database modified: $(date -r $REPO_MODIFIED_TIME)"
+
+  read -p "Do you want to continue and potentially lose changes? (y/N): " confirm
+  if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+    echo "Operation canceled."
+    exit 1
+  fi
+
+  # Create a backup
+  echo "Creating backup of your current database..."
+  TARGET_BACKUP="${TARGET_DB}.backup"
+  if [ -f "$TARGET_BACKUP" ]; then
+    mv "$TARGET_BACKUP" "${TARGET_BACKUP}.old"
+  fi
+  cp "$TARGET_DB" "$TARGET_BACKUP"
+fi
+
+# Pull latest changes
+git pull
+
+# Sync database and important files from this folder to the target
+echo "Copying to $TARGET_DB"
+rsync -av ./database.sqlite "$TARGET_DB"
+rsync -av ./config "$TARGET_CONFIG"
+rsync -av ./.env "$TARGET_ENV"
+
+echo "✅ Changes loaded successfully! n8n database updated."
+echo "Recent changes:"
+git log --oneline -n 5

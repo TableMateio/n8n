@@ -1,0 +1,43 @@
+#!/bin/bash
+# Get computer name for commit message
+COMPUTER_NAME=$(scutil --get ComputerName)
+
+# Check which database file exists and is larger
+OUTER_DB=~/.n8n/database.sqlite
+INNER_DB=~/.n8n/.n8n/database.sqlite
+OUTER_SIZE=0
+INNER_SIZE=0
+
+if [ -f "$OUTER_DB" ]; then
+  OUTER_SIZE=$(stat -f "%z" "$OUTER_DB")
+fi
+
+if [ -f "$INNER_DB" ]; then
+  INNER_SIZE=$(stat -f "%z" "$INNER_DB")
+fi
+
+echo "Outer database size: $(numfmt --to=iec-i --suffix=B $OUTER_SIZE)"
+echo "Inner database size: $(numfmt --to=iec-i --suffix=B $INNER_SIZE)"
+
+if [ $INNER_SIZE -gt $OUTER_SIZE ]; then
+  echo "Using inner database (larger)"
+  SOURCE_DB="$INNER_DB"
+  SOURCE_CONFIG=~/.n8n/.n8n/config
+  SOURCE_ENV=~/.n8n/.env  # .env is usually in the outer directory
+else
+  echo "Using outer database (larger or only available)"
+  SOURCE_DB="$OUTER_DB"
+  SOURCE_CONFIG=~/.n8n/config
+  SOURCE_ENV=~/.n8n/.env
+fi
+
+# Sync database and important files to this folder
+echo "Copying from $SOURCE_DB"
+rsync -av "$SOURCE_DB" "$SOURCE_CONFIG" "$SOURCE_ENV" ./
+
+# Add all changes
+git add .
+git commit -m "Update from $COMPUTER_NAME at $(date)"
+git push
+echo "✅ Changes saved successfully!"
+
