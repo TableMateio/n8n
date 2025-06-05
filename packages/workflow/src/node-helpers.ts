@@ -1195,7 +1195,13 @@ const validateParameter = (
 	const nodeName = nodeProperties.name;
 	const options = type === 'options' ? nodeProperties.options : undefined;
 
-	if (!value?.toString().startsWith('=')) {
+	// Skip validation for expressions, even if they currently resolve to empty values
+	// This is especially important for options fields in fixedCollection that use expressions with fallbacks
+	// Check for both = expressions and {{ }} expressions
+	const valueStr = value?.toString() || '';
+	const isExpression = valueStr.startsWith('=') || valueStr.includes('{{');
+
+	if (!isExpression) {
 		const validationResult = validateFieldType(nodeName, value, type, {
 			valueOptions: options as INodePropertyOptions[],
 		});
@@ -1209,6 +1215,38 @@ const validateParameter = (
 };
 
 /**
+ * Checks if a parameter value should be skipped during validation
+ */
+function shouldSkipParameterValidation(
+	nodeProperties: INodeProperties,
+	value: NodeParameterValue | INodeParameterResourceLocator,
+): boolean {
+	// Skip validation for expression values - they will be resolved at execution time
+	// This is especially important for options fields in fixedCollection that use expressions with fallbacks
+	// Check for both = expressions and {{ }} expressions
+	const valueStr = typeof value === 'string' ? value : '';
+	const isExpressionValue = valueStr.startsWith('=') || valueStr.includes('{{');
+
+	if (isExpressionValue) {
+		return true;
+	}
+
+	// For non-expressions, only skip the "required parameter missing" validation if the parameter is actually empty/missing
+	// This function is specifically for the "required parameter missing" check in addToIssuesIfMissing
+	const isMissingRequired =
+		(nodeProperties.type === 'string' && (value === '' || value === undefined)) ||
+		(nodeProperties.type === 'multiOptions' && Array.isArray(value) && value.length === 0) ||
+		(nodeProperties.type === 'dateTime' && (value === '' || value === undefined)) ||
+		(nodeProperties.type === 'options' && (value === '' || value === undefined)) ||
+		((nodeProperties.type === 'resourceLocator' || nodeProperties.type === 'workflowSelector') &&
+			!isValidResourceLocatorParameterValue(value as INodeParameterResourceLocator));
+
+	// If it's missing and required, don't skip validation (return false so the error gets added)
+	// If it's not missing, skip validation (return true so no "required parameter missing" error is added)
+	return !isMissingRequired;
+}
+
+/**
  * Adds an issue if the parameter is not defined
  *
  * @param {INodeIssues} foundIssues The already found issues
@@ -1220,27 +1258,22 @@ function addToIssuesIfMissing(
 	nodeProperties: INodeProperties,
 	value: NodeParameterValue | INodeParameterResourceLocator,
 ) {
-	// TODO: Check what it really has when undefined
-	if (
-		(nodeProperties.type === 'string' && (value === '' || value === undefined)) ||
-		(nodeProperties.type === 'multiOptions' && Array.isArray(value) && value.length === 0) ||
-		(nodeProperties.type === 'dateTime' && (value === '' || value === undefined)) ||
-		(nodeProperties.type === 'options' && (value === '' || value === undefined)) ||
-		((nodeProperties.type === 'resourceLocator' || nodeProperties.type === 'workflowSelector') &&
-			!isValidResourceLocatorParameterValue(value as INodeParameterResourceLocator))
-	) {
-		// Parameter is required but empty
-		if (foundIssues.parameters === undefined) {
-			foundIssues.parameters = {};
-		}
-		if (foundIssues.parameters[nodeProperties.name] === undefined) {
-			foundIssues.parameters[nodeProperties.name] = [];
-		}
-
-		foundIssues.parameters[nodeProperties.name].push(
-			`Parameter "${nodeProperties.displayName}" is required.`,
-		);
+	// Skip validation if this is an expression value or if the parameter is not missing
+	if (shouldSkipParameterValidation(nodeProperties, value)) {
+		return;
 	}
+
+	// Parameter is required but empty
+	if (foundIssues.parameters === undefined) {
+		foundIssues.parameters = {};
+	}
+	if (foundIssues.parameters[nodeProperties.name] === undefined) {
+		foundIssues.parameters[nodeProperties.name] = [];
+	}
+
+	foundIssues.parameters[nodeProperties.name].push(
+		`Parameter "${nodeProperties.displayName}" is required.`,
+	);
 }
 
 /**

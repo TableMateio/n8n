@@ -4126,6 +4126,76 @@ describe('NodeHelpers', () => {
 				},
 			});
 		});
+
+		it('Should skip validation for expressions with {{ }} syntax', () => {
+			const nodeProperties: INodeProperties = {
+				displayName: 'Options Field',
+				name: 'testOptions',
+				type: 'options',
+				options: [
+					{ name: 'Option 1', value: 'option1' },
+					{ name: 'Option 2', value: 'option2' },
+				],
+				default: 'option1',
+				required: true,
+			};
+			const nodeValues: INodeParameters = {
+				testOptions: "{{ $('Settings').item.json['Details Type'] ?? 'option1' }}",
+			};
+
+			const result = getParameterIssues(nodeProperties, nodeValues, '', testNode, testNodeType);
+
+			expect(result).toEqual({});
+		});
+
+		it('Should skip validation for expressions with = syntax', () => {
+			const nodeProperties: INodeProperties = {
+				displayName: 'Options Field',
+				name: 'testOptions',
+				type: 'options',
+				options: [
+					{ name: 'Option 1', value: 'option1' },
+					{ name: 'Option 2', value: 'option2' },
+				],
+				default: 'option1',
+				required: true,
+			};
+			const nodeValues: INodeParameters = {
+				testOptions: "=$('Settings').item.json['Details Type'] ?? 'option1'",
+			};
+
+			const result = getParameterIssues(nodeProperties, nodeValues, '', testNode, testNodeType);
+
+			expect(result).toEqual({});
+		});
+
+		it('Should validate non-expression values normally', () => {
+			const nodeProperties: INodeProperties = {
+				displayName: 'Options Field',
+				name: 'testOptions',
+				type: 'options',
+				options: [
+					{ name: 'Option 1', value: 'option1' },
+					{ name: 'Option 2', value: 'option2' },
+				],
+				default: 'option1',
+				required: true,
+				validateType: 'options',
+			};
+			const nodeValues: INodeParameters = {
+				testOptions: 'invalid_option',
+			};
+
+			const result = getParameterIssues(nodeProperties, nodeValues, '', testNode, testNodeType);
+
+			expect(result).toEqual({
+				parameters: {
+					testOptions: [
+						"'testOptions' expects one of the following values: [option1, option2] but we got 'invalid_option'",
+					],
+				},
+			});
+		});
 	});
 
 	describe('isTriggerNode', () => {
