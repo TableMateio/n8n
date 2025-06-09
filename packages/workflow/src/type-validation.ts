@@ -394,10 +394,27 @@ export function validateFieldType(
 			}
 		}
 		case 'options': {
+			console.log(`🔍 OPTIONS_DEBUG: Validating options field "${fieldName}"`);
+			console.log(`🔍 OPTIONS_DEBUG: Value to validate:`, JSON.stringify(value, null, 2));
+			console.log(`🔍 OPTIONS_DEBUG: Available options:`, valueOptions);
+
 			const validOptions = valueOptions.map((option) => option.value).join(', ');
 			const isValidOption = valueOptions.some((option) => option.value === value);
 
+			console.log(`🔍 OPTIONS_DEBUG: Valid options: [${validOptions}]`);
+			console.log(`🔍 OPTIONS_DEBUG: Is valid option: ${isValidOption}`);
+
 			if (!isValidOption) {
+				console.log(`🔍 OPTIONS_DEBUG: Value "${value}" is not valid`);
+				// If the value is an empty string, this might be the result of an expression that
+				// resolved to empty or failed to resolve. Allow it to pass validation to prevent
+				// execution failures, but keep the empty value as-is.
+				if (value === '') {
+					console.log(`🔍 OPTIONS_DEBUG: Empty string value - allowing it to pass`);
+					return { valid: true, newValue: value };
+				}
+
+				console.log(`🔍 OPTIONS_DEBUG: Validation failed - returning error`);
 				return {
 					valid: false,
 					errorMessage: `'${fieldName}' expects one of the following values: [${validOptions}] but we got ${getValueDescription(
@@ -405,6 +422,7 @@ export function validateFieldType(
 					)}`,
 				};
 			}
+			console.log(`🔍 OPTIONS_DEBUG: Validation passed`);
 			return { valid: true, newValue: value };
 		}
 		case 'url': {

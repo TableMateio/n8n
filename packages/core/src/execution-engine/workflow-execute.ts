@@ -1025,16 +1025,25 @@ export class WorkflowExecute {
 					typeUnknown: true,
 				};
 			} else {
+				console.log(`🔍 PRE_EXECUTION_DEBUG: Checking node "${nodeName}" for parameter issues`);
 				nodeIssues = NodeHelpers.getNodeParametersIssues(
 					nodeType.description.properties,
 					node,
 					nodeType.description,
 					inputData.pinDataNodeNames,
 				);
+				console.log(
+					`🔍 PRE_EXECUTION_DEBUG: Node "${nodeName}" issues:`,
+					JSON.stringify(nodeIssues, null, 2),
+				);
 			}
 
 			if (nodeIssues !== null) {
 				workflowIssues[node.name] = nodeIssues;
+				console.log(
+					`🔍 PRE_EXECUTION_DEBUG: Added workflow issues for "${nodeName}":`,
+					JSON.stringify(nodeIssues, null, 2),
+				);
 			}
 		}
 

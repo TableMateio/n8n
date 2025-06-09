@@ -4196,6 +4196,87 @@ describe('NodeHelpers', () => {
 				},
 			});
 		});
+
+		it('Should skip validation for expressions in nested fixedCollection options fields', () => {
+			const nodeProperties: INodeProperties = {
+				displayName: 'Fields to Set',
+				name: 'fields',
+				type: 'fixedCollection',
+				typeOptions: {
+					multipleValues: true,
+				},
+				default: {},
+				options: [
+					{
+						name: 'values',
+						displayName: 'Values',
+						values: [
+							{
+								displayName: 'Name',
+								name: 'name',
+								type: 'string',
+								default: '',
+							},
+							{
+								displayName: 'Type',
+								name: 'type',
+								type: 'options',
+								options: [
+									{ name: 'String', value: 'stringValue' },
+									{ name: 'Number', value: 'numberValue' },
+									{ name: 'Boolean', value: 'booleanValue' },
+								],
+								default: 'stringValue',
+							},
+						],
+					},
+				],
+			};
+			const nodeValues: INodeParameters = {
+				fields: {
+					values: [
+						{
+							name: 'testField',
+							type: "={{ $('Settings').item.json['Details Type'] ?? 'stringValue' }}",
+						},
+					],
+				},
+			};
+
+			const result = getParameterIssues(nodeProperties, nodeValues, '', testNode, testNodeType);
+
+			expect(result).toEqual({});
+		});
+
+		it('Should skip validation for expressions in nested collection options fields', () => {
+			const nodeProperties: INodeProperties = {
+				displayName: 'Additional Fields',
+				name: 'additionalFields',
+				type: 'collection',
+				default: {},
+				options: [
+					{
+						displayName: 'Status',
+						name: 'status',
+						type: 'options',
+						options: [
+							{ name: 'Active', value: 'active' },
+							{ name: 'Inactive', value: 'inactive' },
+						],
+						default: 'active',
+					},
+				],
+			};
+			const nodeValues: INodeParameters = {
+				additionalFields: {
+					status: "=$('PreviousNode').item.json.status ?? 'active'",
+				},
+			};
+
+			const result = getParameterIssues(nodeProperties, nodeValues, '', testNode, testNodeType);
+
+			expect(result).toEqual({});
+		});
 	});
 
 	describe('isTriggerNode', () => {

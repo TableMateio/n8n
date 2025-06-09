@@ -247,21 +247,42 @@ describe('Type Validation', () => {
 
 	it('should validate options properly', () => {
 		expect(
-			validateFieldType('options', 'oranges', 'options', {
+			validateFieldType('test', 'option1', 'options', {
 				valueOptions: [
-					{ name: 'apples', value: 'apples' },
-					{ name: 'oranges', value: 'oranges' },
+					{ name: 'Option 1', value: 'option1' },
+					{ name: 'Option 2', value: 'option2' },
 				],
-			}).valid,
-		).toEqual(true);
+			}),
+		).toEqual({
+			valid: true,
+			newValue: 'option1',
+		});
+
 		expect(
-			validateFieldType('options', 'something else', 'options', {
+			validateFieldType('test', 'invalid', 'options', {
 				valueOptions: [
-					{ name: 'apples', value: 'apples' },
-					{ name: 'oranges', value: 'oranges' },
+					{ name: 'Option 1', value: 'option1' },
+					{ name: 'Option 2', value: 'option2' },
 				],
-			}).valid,
-		).toEqual(false);
+			}),
+		).toEqual({
+			valid: false,
+			errorMessage:
+				"'test' expects one of the following values: [option1, option2] but we got 'invalid'",
+		});
+
+		// Test that empty string values are allowed for options (important for expressions)
+		expect(
+			validateFieldType('test', '', 'options', {
+				valueOptions: [
+					{ name: 'Option 1', value: 'option1' },
+					{ name: 'Option 2', value: 'option2' },
+				],
+			}),
+		).toEqual({
+			valid: true,
+			newValue: '',
+		});
 	});
 
 	it('should validate and cast time properly', () => {

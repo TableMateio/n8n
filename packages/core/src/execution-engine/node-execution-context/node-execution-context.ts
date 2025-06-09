@@ -358,6 +358,10 @@ export abstract class NodeExecutionContext implements Omit<FunctionsBase, 'getCr
 
 		let returnData;
 
+		// 🔍 DEBUG: Log parameter resolution for nested options debugging
+		console.log(`🔍 PARAM_DEBUG [${node.name}]: Getting parameter "${parameterName}"`);
+		console.log(`🔍 PARAM_DEBUG [${node.name}]: Original value:`, JSON.stringify(value, null, 2));
+
 		try {
 			returnData = workflow.expression.getParameterValue(
 				// eslint-disable-next-line @typescript-eslint/no-unsafe-argument
@@ -375,7 +379,15 @@ export abstract class NodeExecutionContext implements Omit<FunctionsBase, 'getCr
 				options?.contextNode?.name,
 			);
 			cleanupParameterData(returnData);
+
+			// 🔍 DEBUG: Log resolved value
+			console.log(
+				`🔍 PARAM_DEBUG [${node.name}]: Resolved value:`,
+				JSON.stringify(returnData, null, 2),
+			);
 		} catch (e) {
+			// 🔍 DEBUG: Log expression errors
+			console.log(`🔍 PARAM_DEBUG [${node.name}]: Expression error:`, e.message);
 			if (
 				e instanceof ExpressionError &&
 				node.continueOnFail &&
@@ -406,7 +418,17 @@ export abstract class NodeExecutionContext implements Omit<FunctionsBase, 'getCr
 			});
 		}
 
-		if (options?.skipValidation) return returnData;
+		if (options?.skipValidation) {
+			console.log(`🔍 PARAM_DEBUG [${node.name}]: Skipping validation for "${parameterName}"`);
+			return returnData;
+		}
+
+		// 🔍 DEBUG: Log validation attempt
+		console.log(`🔍 PARAM_DEBUG [${node.name}]: About to validate "${parameterName}"`);
+		console.log(
+			`🔍 PARAM_DEBUG [${node.name}]: Value to validate:`,
+			JSON.stringify(returnData, null, 2),
+		);
 
 		// Validate parameter value if it has a schema defined(RMC) or validateType defined
 		// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -417,6 +439,12 @@ export abstract class NodeExecutionContext implements Omit<FunctionsBase, 'getCr
 			parameterName,
 			runIndex,
 			itemIndex,
+		);
+
+		// 🔍 DEBUG: Log post-validation value
+		console.log(
+			`🔍 PARAM_DEBUG [${node.name}]: Post-validation value:`,
+			JSON.stringify(returnData, null, 2),
 		);
 
 		// eslint-disable-next-line @typescript-eslint/no-unsafe-return

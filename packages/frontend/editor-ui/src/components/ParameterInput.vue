@@ -370,7 +370,10 @@ const getIssues = computed<string[]>(() => {
 
 		let checkValues: string[] = [];
 
-		if (!skipCheck(displayValue.value)) {
+		// Skip validation if the original model value is an expression, not just the display value
+		// This is crucial for nested collection fields where expressions may evaluate to empty or invalid values
+		// but the original expression is valid
+		if (!skipCheck(displayValue.value) && !isModelValueExpression.value) {
 			if (Array.isArray(displayValue.value)) {
 				checkValues = checkValues.concat(displayValue.value);
 			} else {
