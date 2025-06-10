@@ -7,7 +7,6 @@ import type {
 	NodeConnectionType,
 	NodeParameterValue,
 	INodeCredentialDescription,
-	IDisplayOptions,
 } from 'n8n-workflow';
 import {
 	NodeHelpers,
@@ -337,69 +336,6 @@ const getShadowStore = () => {
 	return shadowStore.get(node.value.id)!;
 };
 
-/**
- * Create a composite key for complex displayOptions that depend on multiple controlling fields
- * This handles cases like {hide: {condition: ["exists"], extractionType: ["exists"]}}
- */
-const createCompositeKey = (
-	displayOptions: IDisplayOptions,
-	nodeParameters: INodeParameters,
-	changedFieldName: string,
-	changedFieldValue: NodeParameterValue,
-): string => {
-	const allControllingFields = new Set<string>();
-
-	// Collect all controlling field names from show and hide options
-	if (displayOptions.show) {
-		Object.keys(displayOptions.show).forEach((field) => allControllingFields.add(field));
-	}
-	if (displayOptions.hide) {
-		Object.keys(displayOptions.hide).forEach((field) => allControllingFields.add(field));
-	}
-
-	// For collection fields, we need to get values from the right context
-	const collectionItemMatch =
-		nodeParameters &&
-		Object.keys(nodeParameters).find(
-			(key) => key.includes('.criteria[') && key.includes(changedFieldName),
-		);
-
-	const contextPath = collectionItemMatch
-		? collectionItemMatch.substring(0, collectionItemMatch.lastIndexOf('.'))
-		: '';
-
-	// Build composite key with field=value pairs
-	const keyParts: string[] = [];
-
-	for (const fieldName of allControllingFields) {
-		let fieldValue: NodeParameterValue;
-
-		if (fieldName === changedFieldName) {
-			// Use the provided changed value
-			fieldValue = changedFieldValue;
-		} else {
-			// Get current value from appropriate context
-			if (contextPath) {
-				const contextValues = get(nodeParameters, contextPath);
-				fieldValue = contextValues?.[fieldName];
-			} else {
-				fieldValue = get(nodeParameters, fieldName);
-			}
-		}
-
-		// Normalize the value for the key
-		const normalizedValue =
-			fieldValue !== undefined && fieldValue !== null ? String(fieldValue) : '';
-		keyParts.push(`${fieldName}=${normalizedValue}`);
-	}
-
-	const compositeKey = keyParts.sort().join('|');
-	console.log(
-		`[Shadow] Created composite key: "${compositeKey}" for field controlling fields: [${Array.from(allControllingFields).join(', ')}]`,
-	);
-	return compositeKey;
-};
-
 const saveFieldValue = (
 	fieldPath: string,
 	controllingFieldValue: string,
@@ -624,14 +560,9 @@ const removeMismatchedOptionValues = (
 
 				if (currentValue !== undefined && currentValue !== null && currentValue !== '') {
 					// SAVE VALUE TO SHADOW STORE before clearing
-					// For complex displayOptions with multiple controlling fields, create a composite key
-					const controllingKey = createCompositeKey(
-						prop.displayOptions,
-						nodeParameterValues,
-						changedFieldName,
-						updatedParameter.oldValue,
-					);
-					saveFieldValue(actualDependentFieldPath, controllingKey, currentValue);
+					// Use the OLD value that made this field visible (passed from valueChanged function)
+					const oldControllingValue = String(updatedParameter.oldValue || '');
+					saveFieldValue(actualDependentFieldPath, oldControllingValue, currentValue);
 
 					unset(nodeParameterValues as object, actualDependentFieldPath);
 					console.log(
@@ -643,17 +574,9 @@ const removeMismatchedOptionValues = (
 				const currentValue = get(nodeParameterValues, actualDependentFieldPath);
 				console.log(`[DEBUG]   - Field is visible, currentValue:`, currentValue);
 				if (currentValue === undefined || currentValue === null || currentValue === '') {
-					// For complex displayOptions, create composite key for current state
-					const tempParametersWithChange = { ...tempParameterValues };
-					const currentControllingKey = createCompositeKey(
-						prop.displayOptions,
-						tempParametersWithChange,
-						changedFieldName,
-						updatedParameter.value,
-					);
 					const restoredValue = restoreFieldValue(
 						actualDependentFieldPath,
-						currentControllingKey,
+						String(updatedParameter.value || ''),
 						nodeParameterValues,
 					);
 					if (restoredValue) {
