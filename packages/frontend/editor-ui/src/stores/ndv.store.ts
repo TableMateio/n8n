@@ -92,6 +92,11 @@ export const useNDVStore = defineStore(STORES.NDV, () => {
 
 	const highlightDraggables = ref(false);
 
+	// Shadow parameter storage for preserving dependent field values when hidden by displayOptions
+	const shadowParameterStore = ref<Map<string, Map<string, Map<string, Map<string, any>>>>>(
+		new Map(),
+	);
+
 	const workflowsStore = useWorkflowsStore();
 
 	const activeNode = computed(() => {
@@ -409,6 +414,7 @@ export const useNDVStore = defineStore(STORES.NDV, () => {
 		expressionOutputItemIndex,
 		isTableHoverOnboarded,
 		mainPanelDimensions,
+		shadowParameterStore,
 		setActiveNodeName,
 		setInputNodeName,
 		setInputRunIndex,

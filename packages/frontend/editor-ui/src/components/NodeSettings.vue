@@ -321,48 +321,273 @@ const setValue = (name: string, value: NodeParameterValue) => {
 };
 
 /**
- * Removes node values that are not valid options for the given parameter.
- * This can happen when there are multiple node parameters with the same name
- * but different options and display conditions
- * @param nodeType The node type description
- * @param nodeParameterValues Current node parameter values
- * @param updatedParameter The parameter that was updated. Will be used to determine which parameters to remove based on their display conditions and option values
+ * Simple Shadow Store for Field Value Preservation
+ *
+ * Preserves dependent field values when they become hidden due to displayOptions changes.
+ * Simple approach: field_path -> { controlling_field_value: stored_dependent_value }
+ */
+const getShadowStore = () => {
+	if (!node.value?.id) return null;
+
+	const shadowStore = ndvStore.shadowParameterStore;
+	if (!shadowStore.has(node.value.id)) {
+		shadowStore.set(node.value.id, new Map());
+	}
+	return shadowStore.get(node.value.id)!;
+};
+
+const saveFieldValue = (
+	fieldPath: string,
+	controllingFieldValue: string,
+	value: NodeParameterValue,
+) => {
+	const store = getShadowStore();
+	if (!store || !value) return;
+
+	if (!store.has(fieldPath)) {
+		store.set(fieldPath, new Map());
+	}
+
+	store.get(fieldPath)!.set(controllingFieldValue, value);
+	console.log(
+		`[Shadow] Saved ${fieldPath} = ${JSON.stringify(value)} for controlling value "${controllingFieldValue}"`,
+	);
+};
+
+const restoreFieldValue = (
+	fieldPath: string,
+	controllingFieldValue: string,
+	nodeParameters: INodeParameters,
+) => {
+	const store = getShadowStore();
+	if (!store || !store.has(fieldPath)) return null;
+
+	const fieldStore = store.get(fieldPath)!;
+	if (!fieldStore.has(controllingFieldValue)) return null;
+
+	const storedValue = fieldStore.get(controllingFieldValue);
+	const currentValue = get(nodeParameters, fieldPath);
+
+	// Only restore if field is currently empty
+	if ((currentValue === undefined || currentValue === null || currentValue === '') && storedValue) {
+		set(nodeParameters, fieldPath, storedValue);
+		console.log(
+			`[Shadow] Restored ${fieldPath} = "${storedValue}" for controlling value "${controllingFieldValue}"`,
+		);
+		return storedValue;
+	}
+
+	return null;
+};
+
+/**
+ * N8N's original function to remove parameter values that have invalid options
+ * This ensures parameters are cleared when their displayOptions conditions are no longer met
  */
 const removeMismatchedOptionValues = (
 	nodeType: INodeTypeDescription,
 	nodeParameterValues: INodeParameters | null,
-	updatedParameter: { name: string; value: NodeParameterValue },
+	updatedParameter: { name: string; value: NodeParameterValue; oldValue?: NodeParameterValue },
 ) => {
-	nodeType.properties.forEach((prop) => {
-		const displayOptions = prop.displayOptions;
-		// Not processing parameters that are not set or don't have options
-		if (!nodeParameterValues?.hasOwnProperty(prop.name) || !displayOptions || !prop.options) {
-			return;
-		}
-		// Only process the parameters that depend on the updated parameter
-		const showCondition = displayOptions.show?.[updatedParameter.name];
-		const hideCondition = displayOptions.hide?.[updatedParameter.name];
-		if (showCondition === undefined && hideCondition === undefined) {
-			return;
-		}
+	if (!nodeParameterValues || !nodeType.properties) return;
 
-		let hasValidOptions = true;
+	console.log(
+		`[DEBUG] removeMismatchedOptionValues called with parameter: "${updatedParameter.name}" = "${updatedParameter.value}"`,
+	);
 
-		// Every value should be a possible option
-		if (isINodePropertyCollectionList(prop.options) || isINodePropertiesList(prop.options)) {
-			hasValidOptions = Object.keys(nodeParameterValues).every(
-				(key) => (prop.options ?? []).find((option) => option.name === key) !== undefined,
-			);
-		} else if (isINodePropertyOptionsList(prop.options)) {
-			hasValidOptions = !!prop.options.find(
-				(option) => option.value === nodeParameterValues[prop.name],
-			);
-		}
+	// Recursively find all properties including those nested in fixedCollection, collection, etc.
+	const findAllPropertiesWithPaths = (
+		properties: INodeProperties[],
+		basePath: string = '',
+	): Array<{ property: INodeProperties; path: string }> => {
+		const allProps: Array<{ property: INodeProperties; path: string }> = [];
 
-		if (!hasValidOptions && displayParameter(nodeParameterValues, prop, node.value, nodeType)) {
-			unset(nodeParameterValues as object, prop.name);
+		properties.forEach((prop) => {
+			const currentPath = basePath ? `${basePath}.${prop.name}` : prop.name;
+			allProps.push({ property: prop, path: currentPath });
+
+			// Handle fixedCollection - look inside options[].values[]
+			if (prop.type === 'fixedCollection' && prop.options) {
+				prop.options.forEach((option) => {
+					if (option.values) {
+						const nestedProps = findAllPropertiesWithPaths(option.values, currentPath);
+						allProps.push(...nestedProps);
+					}
+				});
+			}
+
+			// Handle collection - look inside options[]
+			if (prop.type === 'collection' && prop.options) {
+				const nestedProps = findAllPropertiesWithPaths(prop.options, currentPath);
+				allProps.push(...nestedProps);
+			}
+		});
+
+		return allProps;
+	};
+
+	// Get all properties including nested ones
+	const allProperties = findAllPropertiesWithPaths(nodeType.properties);
+	console.log(`[DEBUG] Found ${allProperties.length} total properties including nested ones`);
+
+	// Log some examples of found properties
+	allProperties.slice(0, 10).forEach((prop, i) => {
+		console.log(`[DEBUG] Property ${i}: "${prop.path}" (type: ${prop.property.type})`);
+		if (prop.property.displayOptions) {
+			console.log(`[DEBUG]   - Has displayOptions:`, prop.property.displayOptions);
 		}
 	});
+
+	// Specifically look for filterCriteria related properties
+	const filterProperties = allProperties.filter((p) => p.path.includes('filterCriteria'));
+	console.log(`[DEBUG] Found ${filterProperties.length} filterCriteria-related properties:`);
+	filterProperties.slice(0, 10).forEach((prop, i) => {
+		console.log(`[DEBUG] FilterProp ${i}: "${prop.path}" (type: ${prop.property.type})`);
+		if (prop.property.displayOptions) {
+			console.log(`[DEBUG]   - Has displayOptions:`, prop.property.displayOptions);
+		}
+	});
+
+	// Only clear fields that are actually dependent on the parameter that changed
+	const changedParamName = updatedParameter.name;
+	// Extract just the field name from the full path (e.g., "extractionType" from "filterCriteria.criteria[0].extractionType")
+	const changedFieldName = changedParamName.split('.').pop() || changedParamName;
+	console.log(
+		`[DEBUG] Looking for fields that depend on changed parameter: "${changedParamName}" (field name: "${changedFieldName}")`,
+	);
+
+	let dependentFieldsFound = 0;
+
+	allProperties.forEach(({ property: prop, path: propPath }) => {
+		if (!prop.displayOptions) return;
+
+		// Check if this field depends on the parameter that changed
+		// For nested fields, displayOptions use just the field name, not the full path
+		const dependsOnChangedParam =
+			(prop.displayOptions.show &&
+				Object.keys(prop.displayOptions.show).includes(changedFieldName)) ||
+			(prop.displayOptions.hide &&
+				Object.keys(prop.displayOptions.hide).includes(changedFieldName));
+
+		if (dependsOnChangedParam) {
+			dependentFieldsFound++;
+			console.log(`[DEBUG] Found dependent field: "${propPath}" depends on "${changedFieldName}"`);
+			console.log(`[DEBUG]   - displayOptions:`, prop.displayOptions);
+
+			// CRITICAL FIX: For nested collections, we need to check the field at the same collection item level
+			// If the changed parameter is filterCriteria.criteria[0].extractionType,
+			// then the dependent field should be filterCriteria.criteria[0].attributeName, not filterCriteria.attributeName
+			let actualDependentFieldPath = propPath;
+
+			// Extract the collection item path from the changed parameter
+			// E.g., "filterCriteria.criteria[0].extractionType" -> "filterCriteria.criteria[0]"
+			const collectionItemMatch = changedParamName.match(/^(.+\[[0-9]+\])\.[^.]+$/);
+			if (collectionItemMatch) {
+				const collectionItemPath = collectionItemMatch[1]; // "filterCriteria.criteria[0]"
+
+				// If the dependent field path starts with the collection name but isn't at the item level,
+				// we need to adjust it to be at the same item level
+				const collectionName = collectionItemPath.split('[')[0]; // "filterCriteria.criteria"
+				if (
+					propPath.startsWith(collectionName.split('.').slice(0, -1).join('.')) &&
+					!propPath.includes('[')
+				) {
+					// Convert "filterCriteria.attributeName" to "filterCriteria.criteria[0].attributeName"
+					const fieldName = propPath.split('.').pop(); // "attributeName"
+					actualDependentFieldPath = `${collectionItemPath}.${fieldName}`;
+					console.log(
+						`[DEBUG]   - Adjusted path from "${propPath}" to "${actualDependentFieldPath}"`,
+					);
+				}
+			}
+
+			// Check if this property should be visible with current parameter values
+			// CRITICAL FIX: displayParameter needs the updated parameter values to check visibility correctly
+			// Create a temporary parameter state that includes the new value
+			const tempParameterValues = { ...nodeParameterValues };
+			set(tempParameterValues, changedParamName, updatedParameter.value);
+
+			console.log(`[DEBUG]   - Calling displayParameter with:`);
+			console.log(
+				`[DEBUG]     - tempParameterValues:`,
+				JSON.stringify(tempParameterValues, null, 2),
+			);
+			console.log(`[DEBUG]     - prop.displayOptions:`, prop.displayOptions);
+			console.log(
+				`[DEBUG]     - Looking for "${Object.keys(prop.displayOptions?.show || prop.displayOptions?.hide || {}).join('", "')}" in tempParameterValues`,
+			);
+
+			// For nested collection fields, we need context-aware visibility checking
+			let isVisible;
+			if (
+				actualDependentFieldPath.includes('.criteria[') &&
+				changedParamName.includes('.criteria[')
+			) {
+				// Both fields are in the same collection item - create a context for the specific item
+				const collectionMatch = actualDependentFieldPath.match(/^(.+\.criteria\[\d+\])/);
+				if (collectionMatch) {
+					const collectionItemPath = collectionMatch[1];
+					const collectionItemValues = get(tempParameterValues, collectionItemPath);
+					console.log(
+						`[DEBUG]   - Using collection context for visibility check at "${collectionItemPath}":`,
+						collectionItemValues,
+					);
+
+					// Create a temporary property with the collection item as the context
+					const contextProp = { ...prop };
+					isVisible = displayParameter(
+						collectionItemValues || {},
+						contextProp,
+						node.value,
+						nodeType,
+					);
+				} else {
+					isVisible = displayParameter(tempParameterValues, prop, node.value, nodeType);
+				}
+			} else {
+				isVisible = displayParameter(tempParameterValues, prop, node.value, nodeType);
+			}
+
+			console.log(
+				`[DEBUG]   - isVisible: ${isVisible} (checking with updated ${changedParamName} = ${updatedParameter.value})`,
+			);
+
+			if (!isVisible) {
+				// Field should be hidden and depends on the changed parameter, clear its value
+				// Use the adjusted path for nested fields
+				const currentValue = get(nodeParameterValues, actualDependentFieldPath);
+				console.log(`[DEBUG]   - currentValue:`, currentValue);
+
+				if (currentValue !== undefined && currentValue !== null && currentValue !== '') {
+					// SAVE VALUE TO SHADOW STORE before clearing
+					// Use the OLD value that made this field visible (passed from valueChanged function)
+					const oldControllingValue = String(updatedParameter.oldValue || '');
+					saveFieldValue(actualDependentFieldPath, oldControllingValue, currentValue);
+
+					unset(nodeParameterValues as object, actualDependentFieldPath);
+					console.log(
+						`[N8N] Cleared dependent field: ${actualDependentFieldPath} (depends on ${changedFieldName})`,
+					);
+				}
+			} else {
+				// Field is visible - check if we should restore a saved value
+				const currentValue = get(nodeParameterValues, actualDependentFieldPath);
+				console.log(`[DEBUG]   - Field is visible, currentValue:`, currentValue);
+				if (currentValue === undefined || currentValue === null || currentValue === '') {
+					const restoredValue = restoreFieldValue(
+						actualDependentFieldPath,
+						String(updatedParameter.value || ''),
+						nodeParameterValues,
+					);
+					if (restoredValue) {
+						console.log(`[DEBUG]   - Restored value: ${restoredValue}`);
+					}
+				}
+			}
+		}
+	});
+
+	console.log(`[DEBUG] Total dependent fields found: ${dependentFieldsFound}`);
 };
 
 const valueChanged = (parameterData: IUpdateInformation) => {
@@ -375,6 +600,7 @@ const valueChanged = (parameterData: IUpdateInformation) => {
 		// Get new value from nodeData where it is set already
 		newValue = get(nodeValues.value, parameterData.name) as NodeParameterValue;
 	}
+
 	// Save the node name before we commit the change because
 	// we need the old name to rename the node properly
 	const nodeNameBefore = parameterData.node || node.value?.name;
@@ -540,16 +766,22 @@ const valueChanged = (parameterData: IUpdateInformation) => {
 				set(nodeParameters as object, path, data);
 			}
 		} else {
+			// CRITICAL: Capture the old value BEFORE updating the parameter
+			const oldValue = get(nodeParameters, parameterPath);
+
 			if (newValue === undefined) {
 				unset(nodeParameters as object, parameterPath);
 			} else {
 				set(nodeParameters as object, parameterPath, newValue);
 			}
+
 			// If value is updated, remove parameter values that have invalid options
 			// so getNodeParameters checks don't fail
+			// Pass the old value so the shadow store can save with the correct key
 			removeMismatchedOptionValues(nodeType, nodeParameters, {
 				name: parameterPath,
 				value: newValue,
+				oldValue: oldValue, // Add the old value to the function call
 			});
 		}
 
