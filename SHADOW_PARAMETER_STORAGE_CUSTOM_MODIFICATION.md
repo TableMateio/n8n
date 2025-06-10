@@ -315,11 +315,69 @@ git rebase main # Apply your changes on top of new N8N version
 - **Works universally**: Benefits ALL N8N nodes using conditional fields
 - **Future-proof**: Clean implementation that can evolve with N8N
 
-## Commit Information
+## Commit History
 
+### Initial Implementation
 **Commit Hash**: `bc7b97f00d`
 **Branch**: `update-to-v1.97.0`
 **Commit Message**: "Fix field value preservation in conditional parameters - implement shadow parameter storage to preserve dependent field values when dropdown changes"
+
+### Critical Bug Fix
+**Commit Hash**: `077fbf8b8b`
+**Branch**: `update-to-v1.97.0`
+**Date**: December 2024
+**Commit Message**: "Fix shadow storage fieldPath variable error in NodeSettings.vue - Fixed ReferenceError preventing shadow storage restoration for conditional dropdown parameters"
+
+**Issue Fixed**: The `restoreFieldValue` function was referencing an undefined variable `fieldPath` instead of `actualFieldPath`, causing a `ReferenceError: Can't find variable: fieldPath` that prevented the shadow storage system from working.
+
+**Fix Applied**: Changed line 488 in the `restoreFieldValue` function:
+```typescript
+// ❌ BEFORE (broken):
+const currentValue = get(nodeParameters, fieldPath);
+
+// ✅ AFTER (fixed):
+const currentValue = get(nodeParameters, actualFieldPath);
+```
+
+**Impact**: This was a critical fix that prevented users from being able to switch back to dropdown options (like "Table" extraction type) without JavaScript errors. The shadow storage system now works correctly for all conditional dropdown parameters.
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### JavaScript Error: "ReferenceError: Can't find variable: fieldPath"
+**Symptoms**:
+- Cannot switch back to certain dropdown options (e.g., "Table" extraction type)
+- JavaScript error in browser console
+- Shadow storage restoration fails
+
+**Solution**:
+Ensure the `restoreFieldValue` function in `NodeSettings.vue` uses `actualFieldPath` instead of `fieldPath`:
+```typescript
+// ✅ CORRECT:
+const currentValue = get(nodeParameters, actualFieldPath);
+
+// ❌ INCORRECT:
+const currentValue = get(nodeParameters, fieldPath);
+```
+
+#### Values Not Being Preserved
+**Symptoms**: Field values are still lost when switching dropdown options
+
+**Debugging Steps**:
+1. **Check browser console** for shadow storage debug logs starting with `[Shadow]`
+2. **Verify shadow storage functions exist** in ndv.store.ts: `getShadowStore`, `saveFieldValue`, `restoreFieldValue`
+3. **Confirm old value capture** in NodeSettings.vue: Look for `const oldValue = get(nodeParameters, parameterPath)` BEFORE parameter update
+4. **Test visibility logic**: Ensure `displayParameter` calls use correct context for collection fields
+
+#### Collection Fields Not Working
+**Symptoms**: Shadow storage works for simple fields but not nested collection fields
+
+**Solution**: Verify path adjustment logic for collection items:
+```typescript
+// For extractionItems.items[0].tableOptions, ensure paths are adjusted correctly
+const collectionItemMatch = changedParamName.match(/^(.+\.(items|criteria)\[\d+\])/);
+```
 
 ## Support
 
@@ -329,5 +387,6 @@ If you encounter issues with this modification:
 2. **Verify functions exist** in ndv.store.ts: `getShadowStore`, `saveFieldValue`, `restoreFieldValue`
 3. **Confirm parameter capture** in NodeSettings.vue: `const oldValue = get(nodeParameters, parameterPath)`
 4. **Test with simple cases** before complex nested scenarios
+5. **Check commit history** to ensure all fixes have been applied (especially commit `077fbf8b8b`)
 
 This modification significantly improves N8N's UX for conditional fields and represents a valuable enhancement to the core platform.

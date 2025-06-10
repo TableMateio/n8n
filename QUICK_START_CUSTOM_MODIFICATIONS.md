@@ -59,10 +59,12 @@ cp packages/frontend/editor-ui/src/components/NodeSettings.vue ./my-custom-node-
 ## Testing Your Modifications Work
 
 1. Open any node with conditional fields (like your custom browser node)
-2. Set dropdown to show a dependent field
+2. Set dropdown to show a dependent field (e.g., "Table" extraction type)
 3. Fill in the dependent field with a value
-4. Switch dropdown to hide the field
+4. Switch dropdown to hide the field (e.g., to "Attribute")
 5. Switch back - **the value should be preserved** ✅
+
+⚠️ **If you get a JavaScript error or can't switch back to certain dropdown options**, check that the recent critical fix (commit `077fbf8b8b`) has been applied. See the troubleshooting section in the full documentation.
 
 ## Documentation Files
 
