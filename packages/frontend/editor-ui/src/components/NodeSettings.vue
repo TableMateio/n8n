@@ -357,17 +357,6 @@ const createCompositeKey = (
 		Object.keys(displayOptions.hide).forEach((field) => allControllingFields.add(field));
 	}
 
-	// For collection fields, we need to get values from the right context
-	const collectionItemMatch =
-		nodeParameters &&
-		Object.keys(nodeParameters).find(
-			(key) => key.includes('.criteria[') && key.includes(changedFieldName),
-		);
-
-	const contextPath = collectionItemMatch
-		? collectionItemMatch.substring(0, collectionItemMatch.lastIndexOf('.'))
-		: '';
-
 	// Build composite key with field=value pairs
 	const keyParts: string[] = [];
 
@@ -378,13 +367,8 @@ const createCompositeKey = (
 			// Use the provided changed value
 			fieldValue = changedFieldValue;
 		} else {
-			// Get current value from appropriate context
-			if (contextPath) {
-				const contextValues = get(nodeParameters, contextPath);
-				fieldValue = contextValues?.[fieldName];
-			} else {
-				fieldValue = get(nodeParameters, fieldName);
-			}
+			// Get current value - nodeParameters should already be the right context
+			fieldValue = nodeParameters[fieldName] || get(nodeParameters, fieldName);
 		}
 
 		// Normalize the value for the key
@@ -404,41 +388,149 @@ const saveFieldValue = (
 	fieldPath: string,
 	controllingFieldValue: string,
 	value: NodeParameterValue,
+	fullNodeParameters?: INodeParameters,
 ) => {
 	const store = getShadowStore();
 	if (!store || !value) return;
 
-	if (!store.has(fieldPath)) {
-		store.set(fieldPath, new Map());
+	// CRITICAL FIX: Include collection item context in the key
+	// For fields like "extractionItems.items[0].tableOptions",
+	// we need the key to be unique per collection item
+	let storageKey = fieldPath;
+
+	// If this is a collection item field, include the item path in the key
+	const collectionMatch = fieldPath.match(/^(.+\[[0-9]+\])/);
+	if (collectionMatch) {
+		const collectionItemPath = collectionMatch[1]; // e.g., "extractionItems.items[0]"
+		storageKey = `${collectionItemPath}::${fieldPath}`;
+		console.log(`[Shadow] Using collection-aware key: "${storageKey}" for field "${fieldPath}"`);
 	}
 
-	store.get(fieldPath)!.set(controllingFieldValue, value);
-	console.log(
-		`[Shadow] Saved ${fieldPath} = ${JSON.stringify(value)} for controlling value "${controllingFieldValue}"`,
-	);
+	if (!store.has(storageKey)) {
+		store.set(storageKey, new Map());
+	}
+
+	// For complex objects (like fixedCollection), we need to save all related collection items
+	if (typeof value === 'object' && value !== null && fullNodeParameters) {
+		const savedData = {
+			mainValue: value,
+			relatedCollections: {} as Record<string, any>,
+		};
+
+		// Look for any collection items that might be related to this field
+		// For example, if saving tableOptions, look for tableOptions.* paths
+		const baseFieldPath = fieldPath.replace(/\[\d+\]/, ''); // Remove array indices
+		const pathPattern = new RegExp(`^${baseFieldPath.replace(/\./g, '\\.')}\\[\\d+\\]`);
+
+		// Find all parameter paths that match this collection pattern
+		const findMatchingPaths = (obj: any, currentPath: string = ''): string[] => {
+			const paths: string[] = [];
+
+			for (const [key, val] of Object.entries(obj)) {
+				const fullPath = currentPath ? `${currentPath}.${key}` : key;
+
+				if (pathPattern.test(fullPath)) {
+					paths.push(fullPath);
+				}
+
+				if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+					paths.push(...findMatchingPaths(val, fullPath));
+				}
+			}
+
+			return paths;
+		};
+
+		const relatedPaths = findMatchingPaths(fullNodeParameters);
+
+		// Save all related collection items
+		for (const relatedPath of relatedPaths) {
+			const relatedValue = get(fullNodeParameters, relatedPath);
+			if (relatedValue !== undefined) {
+				savedData.relatedCollections[relatedPath] = relatedValue;
+				console.log(
+					`[Shadow] Including related collection item: ${relatedPath} = ${JSON.stringify(relatedValue)}`,
+				);
+			}
+		}
+
+		store.get(storageKey)!.set(controllingFieldValue, savedData);
+		console.log(
+			`[Shadow] Saved complex field ${fieldPath} with ${Object.keys(savedData.relatedCollections).length} related items for controlling value "${controllingFieldValue}" using key "${storageKey}"`,
+		);
+	} else {
+		// Simple value, save as before
+		store.get(storageKey)!.set(controllingFieldValue, value);
+		console.log(
+			`[Shadow] Saved ${fieldPath} = ${JSON.stringify(value)} for controlling value "${controllingFieldValue}" using key "${storageKey}"`,
+		);
+	}
 };
 
 const restoreFieldValue = (
-	fieldPath: string,
+	storageKey: string,
 	controllingFieldValue: string,
 	nodeParameters: INodeParameters,
 ) => {
 	const store = getShadowStore();
-	if (!store || !store.has(fieldPath)) return null;
+	if (!store) return null;
 
-	const fieldStore = store.get(fieldPath)!;
+	// Extract the actual field path from the storage key
+	// Storage key format: "collectionPath::fieldPath" or just "fieldPath"
+	const actualFieldPath = storageKey.includes('::') ? storageKey.split('::')[1] : storageKey;
+
+	console.log(
+		`[Shadow] Attempting restoration with storage key: "${storageKey}" for field: "${actualFieldPath}"`,
+	);
+
+	if (!store.has(storageKey)) return null;
+
+	const fieldStore = store.get(storageKey)!;
 	if (!fieldStore.has(controllingFieldValue)) return null;
 
-	const storedValue = fieldStore.get(controllingFieldValue);
-	const currentValue = get(nodeParameters, fieldPath);
+	const storedData = fieldStore.get(controllingFieldValue);
+	const currentValue = get(nodeParameters, actualFieldPath);
 
 	// Only restore if field is currently empty
-	if ((currentValue === undefined || currentValue === null || currentValue === '') && storedValue) {
-		set(nodeParameters, fieldPath, storedValue);
-		console.log(
-			`[Shadow] Restored ${fieldPath} = "${storedValue}" for controlling value "${controllingFieldValue}"`,
-		);
-		return storedValue;
+	if ((currentValue === undefined || currentValue === null || currentValue === '') && storedData) {
+		// Check if this is enhanced saved data with related collections
+		if (
+			typeof storedData === 'object' &&
+			storedData !== null &&
+			'mainValue' in storedData &&
+			'relatedCollections' in storedData
+		) {
+			// Restore main value
+			set(nodeParameters, actualFieldPath, storedData.mainValue);
+			console.log(
+				`[Shadow] Restored complex field ${actualFieldPath} = ${JSON.stringify(storedData.mainValue)} for controlling value "${controllingFieldValue}" using key "${storageKey}"`,
+			);
+
+			// Restore all related collection items
+			for (const [relatedPath, relatedValue] of Object.entries(storedData.relatedCollections)) {
+				const currentRelatedValue = get(nodeParameters, relatedPath);
+				// Only restore if the related field is currently empty
+				if (
+					currentRelatedValue === undefined ||
+					currentRelatedValue === null ||
+					currentRelatedValue === ''
+				) {
+					set(nodeParameters, relatedPath, relatedValue);
+					console.log(
+						`[Shadow] Restored related collection item ${relatedPath} = ${JSON.stringify(relatedValue)}`,
+					);
+				}
+			}
+
+			return storedData.mainValue;
+		} else {
+			// Simple value, restore as before
+			set(nodeParameters, actualFieldPath, storedData);
+			console.log(
+				`[Shadow] Restored ${actualFieldPath} = "${storedData}" for controlling value "${controllingFieldValue}" using key "${storageKey}"`,
+			);
+			return storedData;
+		}
 	}
 
 	return null;
@@ -584,11 +676,12 @@ const removeMismatchedOptionValues = (
 			// For nested collection fields, we need context-aware visibility checking
 			let isVisible;
 			if (
-				actualDependentFieldPath.includes('.criteria[') &&
-				changedParamName.includes('.criteria[')
+				(actualDependentFieldPath.includes('.criteria[') &&
+					changedParamName.includes('.criteria[')) ||
+				(actualDependentFieldPath.includes('.items[') && changedParamName.includes('.items['))
 			) {
 				// Both fields are in the same collection item - create a context for the specific item
-				const collectionMatch = actualDependentFieldPath.match(/^(.+\.criteria\[\d+\])/);
+				const collectionMatch = actualDependentFieldPath.match(/^(.+\.(criteria|items)\[\d+\])/);
 				if (collectionMatch) {
 					const collectionItemPath = collectionMatch[1];
 					const collectionItemValues = get(tempParameterValues, collectionItemPath);
@@ -631,7 +724,12 @@ const removeMismatchedOptionValues = (
 						changedFieldName,
 						updatedParameter.oldValue,
 					);
-					saveFieldValue(actualDependentFieldPath, controllingKey, currentValue);
+					saveFieldValue(
+						actualDependentFieldPath,
+						controllingKey,
+						currentValue,
+						nodeParameterValues,
+					);
 
 					unset(nodeParameterValues as object, actualDependentFieldPath);
 					console.log(
@@ -642,22 +740,57 @@ const removeMismatchedOptionValues = (
 				// Field is visible - check if we should restore a saved value
 				const currentValue = get(nodeParameterValues, actualDependentFieldPath);
 				console.log(`[DEBUG]   - Field is visible, currentValue:`, currentValue);
+
 				if (currentValue === undefined || currentValue === null || currentValue === '') {
 					// For complex displayOptions, create composite key for current state
-					const tempParametersWithChange = { ...tempParameterValues };
+					// CRITICAL FIX: Use the correct context for creating the composite key
+					let contextParameters = tempParameterValues;
+
+					// For nested collection fields, we need to use the collection item context
+					if (actualDependentFieldPath.includes('.items[')) {
+						const collectionMatch = actualDependentFieldPath.match(/^(.+\.items\[\d+\])/);
+						if (collectionMatch) {
+							const collectionItemPath = collectionMatch[1];
+							contextParameters = get(tempParameterValues, collectionItemPath) || {};
+							console.log(
+								`[DEBUG]   - Using collection context for restoration at "${collectionItemPath}":`,
+								contextParameters,
+							);
+						}
+					}
+
 					const currentControllingKey = createCompositeKey(
 						prop.displayOptions,
-						tempParametersWithChange,
+						{ [changedFieldName]: updatedParameter.value, ...contextParameters },
 						changedFieldName,
 						updatedParameter.value,
 					);
+
+					console.log(
+						`[DEBUG]   - Attempting restoration with composite key: "${currentControllingKey}"`,
+					);
+
+					// CRITICAL FIX: Use the same collection-aware key logic as saveFieldValue
+					// We need to create the collection-aware storage key for restoration
+					let storageKeyForRestore = actualDependentFieldPath;
+					const collectionMatch = actualDependentFieldPath.match(/^(.+\[[0-9]+\])/);
+					if (collectionMatch) {
+						const collectionItemPath = collectionMatch[1]; // e.g., "extractionItems.items[0]"
+						storageKeyForRestore = `${collectionItemPath}::${actualDependentFieldPath}`;
+						console.log(
+							`[Shadow] Using collection-aware key for restoration: "${storageKeyForRestore}" for field "${actualDependentFieldPath}"`,
+						);
+					}
+
 					const restoredValue = restoreFieldValue(
-						actualDependentFieldPath,
+						storageKeyForRestore,
 						currentControllingKey,
 						nodeParameterValues,
 					);
 					if (restoredValue) {
-						console.log(`[DEBUG]   - Restored value: ${restoredValue}`);
+						console.log(`[Shadow] Successfully restored value:`, restoredValue);
+					} else {
+						console.log(`[DEBUG]   - No saved value found for key: "${currentControllingKey}"`);
 					}
 				}
 			}
