@@ -547,9 +547,7 @@ const removeMismatchedOptionValues = (
 ) => {
 	if (!nodeParameterValues || !nodeType.properties) return;
 
-	console.log(
-		`[DEBUG] removeMismatchedOptionValues called with parameter: "${updatedParameter.name}" = "${updatedParameter.value}"`,
-	);
+	// Debug logging removed to reduce console noise
 
 	// Recursively find all properties including those nested in fixedCollection, collection, etc.
 	const findAllPropertiesWithPaths = (
@@ -584,25 +582,6 @@ const removeMismatchedOptionValues = (
 
 	// Get all properties including nested ones
 	const allProperties = findAllPropertiesWithPaths(nodeType.properties);
-	console.log(`[DEBUG] Found ${allProperties.length} total properties including nested ones`);
-
-	// Log some examples of found properties
-	allProperties.slice(0, 10).forEach((prop, i) => {
-		console.log(`[DEBUG] Property ${i}: "${prop.path}" (type: ${prop.property.type})`);
-		if (prop.property.displayOptions) {
-			console.log(`[DEBUG]   - Has displayOptions:`, prop.property.displayOptions);
-		}
-	});
-
-	// Specifically look for filterCriteria related properties
-	const filterProperties = allProperties.filter((p) => p.path.includes('filterCriteria'));
-	console.log(`[DEBUG] Found ${filterProperties.length} filterCriteria-related properties:`);
-	filterProperties.slice(0, 10).forEach((prop, i) => {
-		console.log(`[DEBUG] FilterProp ${i}: "${prop.path}" (type: ${prop.property.type})`);
-		if (prop.property.displayOptions) {
-			console.log(`[DEBUG]   - Has displayOptions:`, prop.property.displayOptions);
-		}
-	});
 
 	// Only clear fields that are actually dependent on the parameter that changed
 	const changedParamName = updatedParameter.name;
@@ -627,8 +606,6 @@ const removeMismatchedOptionValues = (
 
 		if (dependsOnChangedParam) {
 			dependentFieldsFound++;
-			console.log(`[DEBUG] Found dependent field: "${propPath}" depends on "${changedFieldName}"`);
-			console.log(`[DEBUG]   - displayOptions:`, prop.displayOptions);
 
 			// CRITICAL FIX: For nested collections, we need to check the field at the same collection item level
 			// If the changed parameter is filterCriteria.criteria[0].extractionType,
@@ -651,9 +628,6 @@ const removeMismatchedOptionValues = (
 					// Convert "filterCriteria.attributeName" to "filterCriteria.criteria[0].attributeName"
 					const fieldName = propPath.split('.').pop(); // "attributeName"
 					actualDependentFieldPath = `${collectionItemPath}.${fieldName}`;
-					console.log(
-						`[DEBUG]   - Adjusted path from "${propPath}" to "${actualDependentFieldPath}"`,
-					);
 				}
 			}
 
@@ -662,16 +636,6 @@ const removeMismatchedOptionValues = (
 			// Create a temporary parameter state that includes the new value
 			const tempParameterValues = { ...nodeParameterValues };
 			set(tempParameterValues, changedParamName, updatedParameter.value);
-
-			console.log(`[DEBUG]   - Calling displayParameter with:`);
-			console.log(
-				`[DEBUG]     - tempParameterValues:`,
-				JSON.stringify(tempParameterValues, null, 2),
-			);
-			console.log(`[DEBUG]     - prop.displayOptions:`, prop.displayOptions);
-			console.log(
-				`[DEBUG]     - Looking for "${Object.keys(prop.displayOptions?.show || prop.displayOptions?.hide || {}).join('", "')}" in tempParameterValues`,
-			);
 
 			// For nested collection fields, we need context-aware visibility checking
 			let isVisible;

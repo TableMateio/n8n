@@ -82,10 +82,12 @@ const validateCollection = (
 	parameterPath: string[],
 	validationResult: ExtendedValidationResult,
 ): ExtendedValidationResult => {
-	console.log(
-		`🔍 COLLECTION_DEBUG [${node.name}]: Validating collection "${propertyDescription.name}"`,
-	);
-	console.log(`🔍 COLLECTION_DEBUG [${node.name}]: Parameter path:`, parameterPath);
+	if (process.env.N8N_LOG_LEVEL === 'debug') {
+		console.log(
+			`🔍 COLLECTION_DEBUG [${node.name}]: Validating collection "${propertyDescription.name}"`,
+		);
+		console.log(`🔍 COLLECTION_DEBUG [${node.name}]: Parameter path:`, parameterPath);
+	}
 
 	let nestedDescriptions: INodeProperties[] | undefined;
 
@@ -95,24 +97,32 @@ const validateCollection = (
 		nestedDescriptions = (propertyDescription.options as INodePropertyCollection[]).find(
 			(entry) => entry.name === collectionName,
 		)?.values;
-		console.log(
-			`🔍 COLLECTION_DEBUG [${node.name}]: FixedCollection - looking for "${parameterPath[1]}" -> collection name: "${collectionName}"`,
-		);
+		if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+			console.log(
+				`🔍 COLLECTION_DEBUG [${node.name}]: FixedCollection - looking for "${parameterPath[1]}" -> collection name: "${collectionName}"`,
+			);
+		}
 	}
 
 	if (propertyDescription.type === 'collection') {
 		nestedDescriptions = propertyDescription.options as INodeProperties[];
-		console.log(`🔍 COLLECTION_DEBUG [${node.name}]: Collection - using direct options`);
+		if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+			console.log(`🔍 COLLECTION_DEBUG [${node.name}]: Collection - using direct options`);
+		}
 	}
 
 	if (!nestedDescriptions) {
-		console.log(`🔍 COLLECTION_DEBUG [${node.name}]: No nested descriptions found`);
+		if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+			console.log(`🔍 COLLECTION_DEBUG [${node.name}]: No nested descriptions found`);
+		}
 		return validationResult;
 	}
 
-	console.log(
-		`🔍 COLLECTION_DEBUG [${node.name}]: Found ${nestedDescriptions.length} nested descriptions`,
-	);
+	if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+		console.log(
+			`🔍 COLLECTION_DEBUG [${node.name}]: Found ${nestedDescriptions.length} nested descriptions`,
+		);
+	}
 
 	const validationMap: {
 		[key: string]: { type: FieldType; displayName: string; options?: INodePropertyOptions[] };
@@ -121,9 +131,11 @@ const validateCollection = (
 	for (const prop of nestedDescriptions) {
 		if (!prop.validateType || prop.ignoreValidationDuringExecution) continue;
 
-		console.log(
-			`🔍 COLLECTION_DEBUG [${node.name}]: Adding to validation map: "${prop.name}" (${prop.validateType})`,
-		);
+		if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+			console.log(
+				`🔍 COLLECTION_DEBUG [${node.name}]: Adding to validation map: "${prop.name}" (${prop.validateType})`,
+			);
+		}
 		validationMap[prop.name] = {
 			type: prop.validateType,
 			displayName: prop.displayName,
@@ -131,67 +143,86 @@ const validateCollection = (
 				prop.validateType === 'options' ? (prop.options as INodePropertyOptions[]) : undefined,
 		};
 
-		if (prop.validateType === 'options') {
+		if (
+			prop.validateType === 'options' &&
+			(process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development')
+		) {
 			console.log(`🔍 COLLECTION_DEBUG [${node.name}]: Options for "${prop.name}":`, prop.options);
 		}
 	}
 
 	if (!Object.keys(validationMap).length) {
-		console.log(
-			`🔍 COLLECTION_DEBUG [${node.name}]: No validation map entries - skipping validation`,
-		);
+		if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+			console.log(
+				`🔍 COLLECTION_DEBUG [${node.name}]: No validation map entries - skipping validation`,
+			);
+		}
 		return validationResult;
 	}
 
-	console.log(`🔍 COLLECTION_DEBUG [${node.name}]: Validation map:`, Object.keys(validationMap));
+	if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+		console.log(`🔍 COLLECTION_DEBUG [${node.name}]: Validation map:`, Object.keys(validationMap));
+	}
 
 	if (validationResult.valid) {
 		const valuesToValidate = Array.isArray(validationResult.newValue)
 			? (validationResult.newValue as IDataObject[])
 			: [validationResult.newValue as IDataObject];
 
-		console.log(
-			`🔍 COLLECTION_DEBUG [${node.name}]: Validating ${valuesToValidate.length} value(s)`,
-		);
+		if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+			console.log(
+				`🔍 COLLECTION_DEBUG [${node.name}]: Validating ${valuesToValidate.length} value(s)`,
+			);
+		}
 
 		for (let i = 0; i < valuesToValidate.length; i++) {
 			const value = valuesToValidate[i];
-			console.log(
-				`🔍 COLLECTION_DEBUG [${node.name}]: Validating item ${i}:`,
-				JSON.stringify(value, null, 2),
-			);
+			if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+				console.log(
+					`🔍 COLLECTION_DEBUG [${node.name}]: Validating item ${i}:`,
+					JSON.stringify(value, null, 2),
+				);
+			}
 
 			for (const key of Object.keys(value)) {
 				if (!validationMap[key]) {
-					console.log(
-						`🔍 COLLECTION_DEBUG [${node.name}]: Skipping "${key}" - not in validation map`,
-					);
+					if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+						console.log(
+							`🔍 COLLECTION_DEBUG [${node.name}]: Skipping "${key}" - not in validation map`,
+						);
+					}
 					continue;
 				}
 
-				console.log(
-					`🔍 COLLECTION_DEBUG [${node.name}]: Validating field "${key}" with value:`,
-					JSON.stringify(value[key], null, 2),
-				);
-				console.log(`🔍 COLLECTION_DEBUG [${node.name}]: Field type: ${validationMap[key].type}`);
+				if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+					console.log(
+						`🔍 COLLECTION_DEBUG [${node.name}]: Validating field "${key}" with value:`,
+						JSON.stringify(value[key], null, 2),
+					);
+					console.log(`🔍 COLLECTION_DEBUG [${node.name}]: Field type: ${validationMap[key].type}`);
+				}
 
 				const fieldValidationResult = validateFieldType(key, value[key], validationMap[key].type, {
 					valueOptions: validationMap[key].options,
 				});
 
-				console.log(
-					`🔍 COLLECTION_DEBUG [${node.name}]: Field validation result for "${key}":`,
-					fieldValidationResult,
-				);
+				if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+					console.log(
+						`🔍 COLLECTION_DEBUG [${node.name}]: Field validation result for "${key}":`,
+						fieldValidationResult,
+					);
+				}
 
 				if (!fieldValidationResult.valid) {
-					console.log(
-						`🔍 COLLECTION_DEBUG [${node.name}]: ❌ FIELD VALIDATION FAILED for "${key}"`,
-					);
-					console.log(
-						`🔍 COLLECTION_DEBUG [${node.name}]: Error:`,
-						fieldValidationResult.errorMessage,
-					);
+					if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+						console.log(
+							`🔍 COLLECTION_DEBUG [${node.name}]: ❌ FIELD VALIDATION FAILED for "${key}"`,
+						);
+						console.log(
+							`🔍 COLLECTION_DEBUG [${node.name}]: Error:`,
+							fieldValidationResult.errorMessage,
+						);
+					}
 					throw new ExpressionError(
 						`Invalid input for field '${validationMap[key].displayName}' inside '${propertyDescription.displayName}' in [item ${itemIndex}]`,
 						{
@@ -204,12 +235,18 @@ const validateCollection = (
 				}
 				// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 				value[key] = fieldValidationResult.newValue;
-				console.log(`🔍 COLLECTION_DEBUG [${node.name}]: ✅ Field "${key}" validated successfully`);
+				if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+					console.log(
+						`🔍 COLLECTION_DEBUG [${node.name}]: ✅ Field "${key}" validated successfully`,
+					);
+				}
 			}
 		}
 	}
 
-	console.log(`🔍 COLLECTION_DEBUG [${node.name}]: Collection validation completed successfully`);
+	if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+		console.log(`🔍 COLLECTION_DEBUG [${node.name}]: Collection validation completed successfully`);
+	}
 	return validationResult;
 };
 
@@ -221,32 +258,35 @@ export const validateValueAgainstSchema = (
 	runIndex: number,
 	itemIndex: number,
 ) => {
-	// 🔍 DEBUG: Log validation entry
-	console.log(`🔍 VALIDATION_DEBUG [${node.name}]: Validating "${parameterName}"`);
-	console.log(
-		`🔍 VALIDATION_DEBUG [${node.name}]: Parameter value:`,
-		JSON.stringify(parameterValue, null, 2),
-	);
+	// 🔍 DEBUG: Log validation entry (only in debug mode)
+	if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+		console.log(`🔍 VALIDATION_DEBUG [${node.name}]: Validating "${parameterName}"`);
+		console.log(
+			`🔍 VALIDATION_DEBUG [${node.name}]: Parameter value:`,
+			JSON.stringify(parameterValue, null, 2),
+		);
 
-	// 🔍 NEW DEBUG: Check original parameter value from node.parameters to see if it was an expression
-	const originalParameterValue = node.parameters[parameterName.split('.')[0]];
-	console.log(
-		`🔍 VALIDATION_DEBUG [${node.name}]: Original parameter value:`,
-		JSON.stringify(originalParameterValue, null, 2),
-	);
+		// 🔍 NEW DEBUG: Check original parameter value from node.parameters to see if it was an expression
+		const originalParameterValue = node.parameters[parameterName.split('.')[0]];
+		console.log(
+			`🔍 VALIDATION_DEBUG [${node.name}]: Original parameter value:`,
+			JSON.stringify(originalParameterValue, null, 2),
+		);
 
-	// Check if original value was an expression
-	const originalValueStr =
-		typeof originalParameterValue === 'string'
-			? originalParameterValue
-			: originalParameterValue != null
-				? JSON.stringify(originalParameterValue)
-				: '';
-	const wasOriginallyExpression = originalValueStr.includes('{{') || originalValueStr.includes('=');
-	console.log(
-		`🔍 VALIDATION_DEBUG [${node.name}]: Was originally expression:`,
-		wasOriginallyExpression,
-	);
+		// Check if original value was an expression
+		const originalValueStr =
+			typeof originalParameterValue === 'string'
+				? originalParameterValue
+				: originalParameterValue != null
+					? JSON.stringify(originalParameterValue)
+					: '';
+		const wasOriginallyExpression =
+			originalValueStr.includes('{{') || originalValueStr.includes('=');
+		console.log(
+			`🔍 VALIDATION_DEBUG [${node.name}]: Was originally expression:`,
+			wasOriginallyExpression,
+		);
+	}
 
 	const parameterPath = parameterName.split('.');
 
@@ -257,18 +297,22 @@ export const validateValueAgainstSchema = (
 	);
 
 	if (!propertyDescription) {
-		console.log(
-			`🔍 VALIDATION_DEBUG [${node.name}]: No property description found for "${parameterName}"`,
-		);
+		if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+			console.log(
+				`🔍 VALIDATION_DEBUG [${node.name}]: No property description found for "${parameterName}"`,
+			);
+		}
 		return parameterValue;
 	}
 
-	console.log(`🔍 VALIDATION_DEBUG [${node.name}]: Property description:`, {
-		name: propertyDescription.name,
-		type: propertyDescription.type,
-		validateType: propertyDescription.validateType,
-		ignoreValidationDuringExecution: propertyDescription.ignoreValidationDuringExecution,
-	});
+	if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+		console.log(`🔍 VALIDATION_DEBUG [${node.name}]: Property description:`, {
+			name: propertyDescription.name,
+			type: propertyDescription.type,
+			validateType: propertyDescription.validateType,
+			ignoreValidationDuringExecution: propertyDescription.ignoreValidationDuringExecution,
+		});
+	}
 
 	let validationResult: ExtendedValidationResult = { valid: true, newValue: parameterValue };
 
@@ -277,9 +321,11 @@ export const validateValueAgainstSchema = (
 		propertyDescription.validateType &&
 		!propertyDescription.ignoreValidationDuringExecution
 	) {
-		console.log(
-			`🔍 VALIDATION_DEBUG [${node.name}]: Direct field validation for "${parameterName}"`,
-		);
+		if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+			console.log(
+				`🔍 VALIDATION_DEBUG [${node.name}]: Direct field validation for "${parameterName}"`,
+			);
+		}
 		validationResult = validateFieldType(
 			parameterName,
 			parameterValue,
@@ -290,9 +336,11 @@ export const validateValueAgainstSchema = (
 		parameterPath[1] === 'value' &&
 		typeof parameterValue === 'object'
 	) {
-		console.log(
-			`🔍 VALIDATION_DEBUG [${node.name}]: Resource mapper validation for "${parameterName}"`,
-		);
+		if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+			console.log(
+				`🔍 VALIDATION_DEBUG [${node.name}]: Resource mapper validation for "${parameterName}"`,
+			);
+		}
 		validationResult = validateResourceMapperValue(
 			parameterName,
 			parameterValue as { [key: string]: unknown },
@@ -300,9 +348,15 @@ export const validateValueAgainstSchema = (
 			propertyDescription.typeOptions?.resourceMapper,
 		);
 	} else if (['fixedCollection', 'collection'].includes(propertyDescription.type)) {
-		console.log(`🔍 VALIDATION_DEBUG [${node.name}]: Collection validation for "${parameterName}"`);
-		console.log(`🔍 VALIDATION_DEBUG [${node.name}]: Collection type: ${propertyDescription.type}`);
-		console.log(`🔍 VALIDATION_DEBUG [${node.name}]: Parameter path:`, parameterPath);
+		if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+			console.log(
+				`🔍 VALIDATION_DEBUG [${node.name}]: Collection validation for "${parameterName}"`,
+			);
+			console.log(
+				`🔍 VALIDATION_DEBUG [${node.name}]: Collection type: ${propertyDescription.type}`,
+			);
+			console.log(`🔍 VALIDATION_DEBUG [${node.name}]: Parameter path:`, parameterPath);
+		}
 		validationResult = validateCollection(
 			node,
 			runIndex,
@@ -312,15 +366,21 @@ export const validateValueAgainstSchema = (
 			validationResult,
 		);
 	} else {
-		console.log(`🔍 VALIDATION_DEBUG [${node.name}]: No validation applied for "${parameterName}"`);
+		if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+			console.log(
+				`🔍 VALIDATION_DEBUG [${node.name}]: No validation applied for "${parameterName}"`,
+			);
+		}
 	}
 
 	if (!validationResult.valid) {
-		console.log(`🔍 VALIDATION_DEBUG [${node.name}]: VALIDATION FAILED for "${parameterName}"`);
-		console.log(
-			`🔍 VALIDATION_DEBUG [${node.name}]: Error message:`,
-			validationResult.errorMessage,
-		);
+		if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+			console.log(`🔍 VALIDATION_DEBUG [${node.name}]: VALIDATION FAILED for "${parameterName}"`);
+			console.log(
+				`🔍 VALIDATION_DEBUG [${node.name}]: Error message:`,
+				validationResult.errorMessage,
+			);
+		}
 		throw new ExpressionError(
 			`Invalid input for '${
 				validationResult.fieldName
@@ -336,7 +396,9 @@ export const validateValueAgainstSchema = (
 		);
 	}
 
-	console.log(`🔍 VALIDATION_DEBUG [${node.name}]: Validation passed for "${parameterName}"`);
+	if (process.env.N8N_LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
+		console.log(`🔍 VALIDATION_DEBUG [${node.name}]: Validation passed for "${parameterName}"`);
+	}
 	// eslint-disable-next-line @typescript-eslint/no-unsafe-return
 	return validationResult.newValue;
 };
