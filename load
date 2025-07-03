@@ -1,5 +1,8 @@
 #!/bin/bash
 
+echo "🚀 N8N Load Script - Syncing Project & Database"
+echo "=============================================="
+
 # Check which database file exists and is in use
 OUTER_DB=~/.n8n/database.sqlite
 INNER_DB=~/.n8n/.n8n/database.sqlite
@@ -16,57 +19,89 @@ if [ -f "$INNER_DB" ]; then
   INNER_MODIFIED_TIME=$(stat -f "%m" "$INNER_DB" 2>/dev/null || echo "0")
 fi
 
-echo "Outer database size: $(numfmt --to=iec-i --suffix=B $OUTER_SIZE) (Last modified: $(date -r $OUTER_MODIFIED_TIME))"
-echo "Inner database size: $(numfmt --to=iec-i --suffix=B $INNER_SIZE) (Last modified: $(date -r $INNER_MODIFIED_TIME))"
+# Convert bytes to readable format (manual since numfmt isn't available on macOS)
+format_bytes() {
+    local bytes=$1
+    if [ $bytes -gt 1073741824 ]; then
+        echo "$(( bytes / 1073741824 )) GB"
+    elif [ $bytes -gt 1048576 ]; then
+        echo "$(( bytes / 1048576 )) MB"
+    elif [ $bytes -gt 1024 ]; then
+        echo "$(( bytes / 1024 )) KB"
+    else
+        echo "$bytes bytes"
+    fi
+}
+
+echo "📊 Current Database Status:"
+echo "   Outer database: $(format_bytes $OUTER_SIZE) (Last modified: $(date -r $OUTER_MODIFIED_TIME))"
+echo "   Inner database: $(format_bytes $INNER_SIZE) (Last modified: $(date -r $INNER_MODIFIED_TIME))"
 
 # Determine which directory to use based on which one has the larger DB
 if [ $INNER_SIZE -gt $OUTER_SIZE ]; then
-  echo "Using inner directory (larger database)"
+  echo "✅ Using inner directory (larger database)"
   TARGET_DB="$INNER_DB"
   TARGET_CONFIG=~/.n8n/.n8n/config
   LOCAL_MODIFIED_TIME=$INNER_MODIFIED_TIME
 else
-  echo "Using outer directory (larger database or only available)"
+  echo "✅ Using outer directory (larger database or only available)"
   TARGET_DB="$OUTER_DB"
   TARGET_CONFIG=~/.n8n/config
   LOCAL_MODIFIED_TIME=$OUTER_MODIFIED_TIME
 fi
 
-# Always use the outer .env
-TARGET_ENV=~/.n8n/.env
-
-# Check if the local database is newer than the repository one
-REPO_MODIFIED_TIME=$(stat -f "%m" ./database.sqlite 2>/dev/null || echo "0")
-
-if [ "$LOCAL_MODIFIED_TIME" -gt "$REPO_MODIFIED_TIME" ]; then
-  echo "⚠️ WARNING: Your local database is newer than the one in the repository"
-  echo "Local database modified: $(date -r $LOCAL_MODIFIED_TIME)"
-  echo "Repo database modified: $(date -r $REPO_MODIFIED_TIME)"
-
-  read -p "Do you want to continue and potentially lose changes? (y/N): " confirm
-  if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-    echo "Operation canceled."
-    exit 1
-  fi
-
-  # Create a backup
-  echo "Creating backup of your current database..."
-  TARGET_BACKUP="${TARGET_DB}.backup"
-  if [ -f "$TARGET_BACKUP" ]; then
-    mv "$TARGET_BACKUP" "${TARGET_BACKUP}.old"
-  fi
-  cp "$TARGET_DB" "$TARGET_BACKUP"
-fi
-
-# Pull latest changes
+echo ""
+echo "🔄 Pulling latest code changes from Git..."
 git pull
 
-# Sync database and important files from this folder to the target
-echo "Copying to $TARGET_DB"
-rsync -av ./database.sqlite "$TARGET_DB"
-rsync -av ./config "$TARGET_CONFIG"
-rsync -av ./.env "$TARGET_ENV"
-
-echo "✅ Changes loaded successfully! n8n database updated."
-echo "Recent changes:"
+echo ""
+echo "📋 Recent changes:"
 git log --oneline -n 5
+
+# Check if there's a local database backup
+if [ -f "./database.sqlite.local" ]; then
+    LOCAL_BACKUP_TIME=$(stat -f "%m" "./database.sqlite.local" 2>/dev/null || echo "0")
+
+    echo ""
+    echo "💾 Local database backup found: $(date -r $LOCAL_BACKUP_TIME)"
+
+    if [ "$LOCAL_BACKUP_TIME" -gt "$LOCAL_MODIFIED_TIME" ]; then
+        echo "⚠️  WARNING: Local backup is newer than your current database"
+        echo "   Backup: $(date -r $LOCAL_BACKUP_TIME)"
+        echo "   Current: $(date -r $LOCAL_MODIFIED_TIME)"
+
+        read -p "Do you want to restore from the backup? (y/N): " confirm
+        if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+            echo "🔄 Creating safety backup of current database..."
+            cp "$TARGET_DB" "${TARGET_DB}.backup"
+
+            echo "📥 Restoring database from local backup..."
+            cp "./database.sqlite.local" "$TARGET_DB"
+            echo "✅ Database restored successfully!"
+        else
+            echo "ℹ️  Keeping current database unchanged"
+        fi
+    else
+        echo "ℹ️  Current database is newer than backup - no action needed"
+    fi
+else
+    echo ""
+    echo "ℹ️  No local database backup found"
+    echo "   💡 Database syncs automatically via Dropbox"
+fi
+
+# Sync config if it exists
+if [ -d "./config" ]; then
+    echo ""
+    echo "⚙️  Syncing configuration files..."
+    rsync -av ./config/ "$TARGET_CONFIG/"
+fi
+
+echo ""
+echo "✅ Load Complete!"
+echo "   📁 Code: Updated from Git"
+echo "   💾 Database: Managed via Dropbox sync"
+echo "   ⚙️  Config: Synced to n8n directory"
+echo ""
+echo "💡 Your database automatically syncs via Dropbox since this"
+echo "   project is in your Dropbox folder!"

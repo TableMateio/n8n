@@ -2,6 +2,9 @@
 # Get computer name for commit message
 COMPUTER_NAME=$(scutil --get ComputerName)
 
+echo "🚀 N8N Save Script - Syncing Project & Database"
+echo "=============================================="
+
 # Check which database file exists and is larger
 OUTER_DB=~/.n8n/database.sqlite
 INNER_DB=~/.n8n/.n8n/database.sqlite
@@ -16,28 +19,55 @@ if [ -f "$INNER_DB" ]; then
   INNER_SIZE=$(stat -f "%z" "$INNER_DB")
 fi
 
-echo "Outer database size: $(numfmt --to=iec-i --suffix=B $OUTER_SIZE)"
-echo "Inner database size: $(numfmt --to=iec-i --suffix=B $INNER_SIZE)"
+# Convert bytes to readable format (manual since numfmt isn't available on macOS)
+format_bytes() {
+    local bytes=$1
+    if [ $bytes -gt 1073741824 ]; then
+        echo "$(( bytes / 1073741824 )) GB"
+    elif [ $bytes -gt 1048576 ]; then
+        echo "$(( bytes / 1048576 )) MB"
+    elif [ $bytes -gt 1024 ]; then
+        echo "$(( bytes / 1024 )) KB"
+    else
+        echo "$bytes bytes"
+    fi
+}
+
+echo "📊 Database Status:"
+echo "   Outer database: $(format_bytes $OUTER_SIZE)"
+echo "   Inner database: $(format_bytes $INNER_SIZE)"
 
 if [ $INNER_SIZE -gt $OUTER_SIZE ]; then
-  echo "Using inner database (larger)"
+  echo "✅ Using inner database (larger)"
   SOURCE_DB="$INNER_DB"
   SOURCE_CONFIG=~/.n8n/.n8n/config
-  SOURCE_ENV=~/.n8n/.env  # .env is usually in the outer directory
 else
-  echo "Using outer database (larger or only available)"
+  echo "✅ Using outer database (larger or only available)"
   SOURCE_DB="$OUTER_DB"
   SOURCE_CONFIG=~/.n8n/config
-  SOURCE_ENV=~/.n8n/.env
 fi
 
-# Sync database and important files to this folder
-echo "Copying from $SOURCE_DB"
-rsync -av "$SOURCE_DB" "$SOURCE_CONFIG" "$SOURCE_ENV" ./
+# Copy database locally for backup (since Git can't handle it in forks)
+echo ""
+echo "💾 Creating local database backup..."
+cp "$SOURCE_DB" "./database.sqlite.local"
+if [ -d "$SOURCE_CONFIG" ]; then
+    rsync -av "$SOURCE_CONFIG" ./config/
+fi
 
-# Add all changes
+echo ""
+echo "🔄 Pushing code changes to Git..."
+# Add all changes except large database files
 git add .
 git commit -m "Update from $COMPUTER_NAME at $(date)"
 git push
-echo "✅ Changes saved successfully!"
+
+echo ""
+echo "✅ Save Complete!"
+echo "   📁 Code & config: Pushed to Git"
+echo "   💾 Database: Backed up locally (synced via Dropbox)"
+echo "   🔗 Your laptop can access the database via Dropbox sync"
+echo ""
+echo "💡 Note: Database syncs automatically via Dropbox since this project"
+echo "   is in your Dropbox folder. No separate action needed!"
 

@@ -27,3 +27,4 @@ junit.xml
 test-results.json
 *.0x
 database.sqlite
+database.sqlite.local
