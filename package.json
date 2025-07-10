@@ -102,5 +102,11 @@
       "eslint-plugin-n8n-local-rules": "patches/eslint-plugin-n8n-local-rules.patch",
       "element-plus@2.4.3": "patches/element-plus@2.4.3.patch"
     }
+  },
+  "dependencies": {
+    "openai": "4.95.0",
+    "puppeteer": "24.6.0",
+    "puppeteer-core": "24.4.0",
+    "ws": "8.18.1"
   }
 }
