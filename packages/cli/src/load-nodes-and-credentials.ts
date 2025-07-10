@@ -199,7 +199,8 @@ export class LoadNodesAndCredentials {
 	}
 
 	private async loadNodesFromCustomDirectories(): Promise<void> {
-		for (const directory of this.getCustomDirectories()) {
+		const directories = this.getCustomDirectories();
+		for (const directory of directories) {
 			await this.runDirectoryLoader(CustomDirectoryLoader, directory);
 		}
 	}
