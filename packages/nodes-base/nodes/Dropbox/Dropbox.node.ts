@@ -391,6 +391,45 @@ export class Dropbox implements INodeType {
 				placeholder: '',
 				hint: 'The name of the input binary field containing the file to be uploaded',
 			},
+			{
+				displayName: 'Create Shareable Link',
+				name: 'createShareableLink',
+				type: 'boolean',
+				default: false,
+				displayOptions: {
+					show: {
+						operation: ['upload'],
+						resource: ['file'],
+					},
+				},
+				description: 'Whether to create a shareable link for the uploaded file',
+			},
+			{
+				displayName: 'Link Type',
+				name: 'linkType',
+				type: 'options',
+				options: [
+					{
+						name: 'Preview Page',
+						value: 'preview',
+						description: 'Link opens a preview page where users can view and download the file',
+					},
+					{
+						name: 'Direct Download',
+						value: 'direct',
+						description: 'Link directly downloads the file when clicked',
+					},
+				],
+				default: 'preview',
+				displayOptions: {
+					show: {
+						operation: ['upload'],
+						resource: ['file'],
+						createShareableLink: [true],
+					},
+				},
+				description: 'Type of shareable link to create',
+			},
 
 			// ----------------------------------
 			//         search:query
@@ -916,6 +955,252 @@ export class Dropbox implements INodeType {
 
 				if (resource === 'file' && operation === 'upload') {
 					const data = JSON.parse(responseData as string);
+
+					// Check if user wants to create a shareable link
+					const createShareableLink = this.getNodeParameter('createShareableLink', i) as boolean;
+
+					if (createShareableLink) {
+						try {
+							const linkType = this.getNodeParameter('linkType', i) as string;
+							// Use file ID for more precise targeting (avoids folder link issues)
+							const fileId = data.id;
+							const filePath = data.path_display || data.path_lower;
+							let sharedLinkResponse;
+
+							// Create clean headers for sharing API calls (remove Content-Type from upload)
+							const sharingHeaders = { ...headers };
+							delete sharingHeaders['Content-Type']; // Remove octet-stream header from upload
+
+							console.log('🔗 [DEBUG] Creating shareable link for:', { fileId, filePath });
+
+							// First, try to list existing shared links for this file (use file ID)
+							try {
+								const existingLinksResponse = await dropboxApiRequest.call(
+									this,
+									'POST',
+									'https://api.dropboxapi.com/2/sharing/list_shared_links',
+									{ path: fileId },
+									{},
+									sharingHeaders,
+								);
+
+								console.log('🔗 [DEBUG] Existing links response:', existingLinksResponse);
+
+								// Check if we have folder links that we can use to construct file URLs
+								if (existingLinksResponse.links && existingLinksResponse.links.length > 0) {
+									const fileLinks = existingLinksResponse.links.filter(
+										(link) => link['.tag'] === 'file',
+									);
+									const folderLinks = existingLinksResponse.links.filter(
+										(link) => link['.tag'] === 'folder',
+									);
+
+									if (fileLinks.length > 0) {
+										sharedLinkResponse = fileLinks[0];
+										console.log('🔗 [DEBUG] Using existing FILE link:', sharedLinkResponse.url);
+									} else if (folderLinks.length > 0) {
+										// Try to construct file URL from folder sharing pattern
+										const folderLink = folderLinks[0];
+										console.log(
+											'🔗 [DEBUG] Found shared folder, attempting to construct file URL...',
+										);
+										console.log('🔗 [DEBUG] Folder URL:', folderLink.url);
+
+										// Try to use folder's sharing structure for the file
+										const fileName = data.name;
+										const folderUrl = folderLink.url;
+
+										// Extract the base sharing info from folder URL
+										if (folderUrl.includes('rlkey=')) {
+											// Attempt to construct a file URL using folder's sharing credentials
+											// This is experimental - we'll see if it works
+											try {
+												const urlParts = folderUrl.split('/scl/fo/');
+												if (urlParts.length === 2) {
+													const [baseUrl, pathAndQuery] = urlParts;
+													const [folderToken, queryString] = pathAndQuery.split('?');
+
+													// Try constructing a file URL pattern
+													const constructedUrl = `${baseUrl}/scl/fi/${folderToken}/${fileName}?${queryString}`;
+													console.log(
+														'🔗 [DEBUG] Attempting constructed file URL:',
+														constructedUrl,
+													);
+
+													sharedLinkResponse = {
+														url: constructedUrl,
+														'.tag': 'file',
+													};
+												}
+											} catch (constructError) {
+												console.log(
+													'🔗 [DEBUG] Could not construct file URL, will try creating new link...',
+												);
+											}
+										}
+
+										if (!sharedLinkResponse) {
+											console.log(
+												'🔗 [DEBUG] Could not use folder link, creating new file link...',
+											);
+										}
+									} else {
+										console.log('🔗 [DEBUG] No existing links found, creating new file link...');
+									}
+								}
+							} catch (listError) {
+								console.log('🔗 [DEBUG] List links failed:', listError.message);
+								// Continue to create new link if listing fails
+							}
+
+							// If no existing file link found, create a new one
+							if (!sharedLinkResponse) {
+								// Try legacy API first (simpler authorization requirements)
+								try {
+									console.log('🔗 [DEBUG] Trying legacy create_shared_link API first...');
+									sharedLinkResponse = await dropboxApiRequest.call(
+										this,
+										'POST',
+										'https://api.dropboxapi.com/2/sharing/create_shared_link',
+										{ path: fileId },
+										{},
+										sharingHeaders,
+									);
+									console.log(
+										'🔗 [DEBUG] ✅ Legacy API worked! Created link:',
+										sharedLinkResponse.url,
+									);
+								} catch (legacyError) {
+									console.log(
+										'🔗 [DEBUG] Legacy API failed:',
+										legacyError.message,
+										'- trying modern API...',
+									);
+									// If legacy fails, try modern API
+									try {
+										console.log('🔗 [DEBUG] Trying modern create_shared_link_with_settings...');
+										sharedLinkResponse = await dropboxApiRequest.call(
+											this,
+											'POST',
+											'https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings',
+											{ path: fileId },
+											{},
+											sharingHeaders,
+										);
+										console.log(
+											'🔗 [DEBUG] ✅ Modern API worked! Created link:',
+											sharedLinkResponse.url,
+										);
+									} catch (modernError) {
+										console.log(
+											'🔗 [DEBUG] Both APIs failed with file ID. Trying with file path as last resort...',
+										);
+										// Last resort: try with file path instead of file ID
+										try {
+											sharedLinkResponse = await dropboxApiRequest.call(
+												this,
+												'POST',
+												'https://api.dropboxapi.com/2/sharing/create_shared_link',
+												{ path: filePath },
+												{},
+												sharingHeaders,
+											);
+											console.log(
+												'🔗 [DEBUG] ✅ Path-based API worked! Created link:',
+												sharedLinkResponse.url,
+											);
+										} catch (pathError) {
+											console.log(
+												'🔗 [DEBUG] All attempts failed. File ID errors - Legacy:',
+												legacyError.message,
+												'Modern:',
+												modernError.message,
+												'Path:',
+												pathError.message,
+											);
+											throw pathError;
+										}
+									}
+								}
+							}
+
+							// Final validation: ensure we got a file link, not a folder link
+							if (
+								sharedLinkResponse &&
+								sharedLinkResponse.url &&
+								sharedLinkResponse.url.includes('/scl/fo/')
+							) {
+								console.log(
+									'⚠️ [DEBUG] WARNING: Got folder link instead of file link. Forcing new file link creation...',
+								);
+								try {
+									// Force create a new file-specific link by skipping existing links
+									sharedLinkResponse = await dropboxApiRequest.call(
+										this,
+										'POST',
+										'https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings',
+										{
+											path: fileId,
+											settings: {
+												access: 'viewer',
+												allow_download: true,
+												audience: 'public',
+												requested_visibility: 'public',
+											},
+										},
+										{},
+										sharingHeaders,
+									);
+									console.log(
+										'✅ [DEBUG] Successfully created file-specific link:',
+										sharedLinkResponse.url,
+									);
+								} catch (forceError) {
+									console.log('🔗 [DEBUG] Could not force create file link:', forceError.message);
+									// Continue with the folder link as fallback
+								}
+							}
+
+							// Modify URL based on link type preference
+							let shareableUrl = sharedLinkResponse.url;
+							if (linkType === 'direct') {
+								// For new Dropbox link architecture (/scl/), ensure we preserve rlkey when changing dl parameter
+								if (shareableUrl.includes('rlkey=')) {
+									// New link format: change dl=0 to dl=1 while preserving rlkey
+									shareableUrl = shareableUrl.replace('dl=0', 'dl=1');
+								} else {
+									// Legacy link format: change dl=0 to dl=1
+									shareableUrl = shareableUrl.replace('dl=0', 'dl=1');
+								}
+							}
+
+							console.log('🔗 [DEBUG] Final shareable URL:', shareableUrl);
+
+							// Extract filename from the path
+							const filename = data.name || data.path_display?.split('/').pop() || 'file';
+
+							// Add shareable link to the response data
+							data.shareable_url = shareableUrl;
+							data.link_type = linkType;
+
+							// Add structured URL object for easy access
+							data.url_object = {
+								url: shareableUrl,
+								filename: filename,
+							};
+						} catch (linkError) {
+							console.log('🔗 [DEBUG] Final catch - sharing failed:', linkError.message);
+							// Check if it's a scope permission error and provide helpful message
+							if (linkError.message && linkError.message.includes('sharing.')) {
+								data.shareable_url_error = `Failed to create shareable link: Missing Dropbox app permissions. Please enable 'sharing.read' and 'sharing.write' scopes in your Dropbox App Console, then re-authenticate this connection.`;
+							} else if (linkError.message && linkError.message.includes('Authorization failed')) {
+								data.shareable_url_error = `Failed to create shareable link: Authorization failed. Please re-authenticate your Dropbox connection or check your app permissions.`;
+							} else {
+								data.shareable_url_error = `Failed to create shareable link: ${linkError.message}`;
+							}
+						}
+					}
+
 					const executionData = this.helpers.constructExecutionMetaData(
 						this.helpers.returnJsonArray(data as IDataObject[]),
 						{ itemData: { item: i } },
