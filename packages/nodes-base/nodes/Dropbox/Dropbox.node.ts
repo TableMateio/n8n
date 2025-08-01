@@ -431,6 +431,20 @@ export class Dropbox implements INodeType {
 				},
 				description: 'Type of temporary shareable link to create (expires in 4 hours)',
 			},
+			{
+				displayName: 'Output Input Data',
+				name: 'outputInputData',
+				type: 'boolean',
+				default: false,
+				displayOptions: {
+					show: {
+						operation: ['upload'],
+						resource: ['file'],
+					},
+				},
+				description:
+					'Whether to include all incoming input data (including binary files) in the output alongside the upload results',
+			},
 
 			// ----------------------------------
 			//         search:query
@@ -1023,10 +1037,31 @@ export class Dropbox implements INodeType {
 						}
 					}
 
+					// Check if user wants to output input data
+					const outputInputData = this.getNodeParameter('outputInputData', i) as boolean;
+
+					let resultData: IDataObject;
+					if (outputInputData) {
+						// Merge upload result with input data
+						resultData = {
+							...items[i].json, // Include all input JSON data
+							...data, // Upload result data takes precedence
+						};
+					} else {
+						// Only return upload result
+						resultData = data as IDataObject;
+					}
+
 					const executionData = this.helpers.constructExecutionMetaData(
-						this.helpers.returnJsonArray(data as IDataObject[]),
+						this.helpers.returnJsonArray([resultData]),
 						{ itemData: { item: i } },
 					);
+
+					// If outputInputData is enabled and there are binary files in input, include them
+					if (outputInputData && items[i].binary) {
+						executionData[0].binary = items[i].binary;
+					}
+
 					returnData.push(...executionData);
 				} else if (resource === 'file' && operation === 'download') {
 					const newItem: INodeExecutionData = {
