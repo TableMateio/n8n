@@ -1013,8 +1013,6 @@ export class Dropbox implements INodeType {
 							data.url_object = {
 								url: shareableUrl,
 								filename: filename,
-								expires_in: '4 hours',
-								type: 'temporary',
 							};
 						} catch (linkError) {
 							console.log('🔗 [DEBUG] Final catch - sharing failed:', linkError.message);
